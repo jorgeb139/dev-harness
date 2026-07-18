@@ -53,4 +53,11 @@ assert 'CLAUDE_PLUGIN_ROOT' in flat
 " || fail "hooks.json inválido"
 ok "pre-commit-gate.sh + hooks.json"
 
+# --- Task 5: comando init ---
+[ -f "$ROOT/commands/init.md" ] || fail "falta commands/init.md"
+for ref in ARCHITECTURE.md MUST-DO.md health.sh PLAN-template.md; do
+  grep -q "$ref" "$ROOT/commands/init.md" || fail "init.md no referencia $ref"
+done
+ok "commands/init.md"
+
 echo "ALL OK"
