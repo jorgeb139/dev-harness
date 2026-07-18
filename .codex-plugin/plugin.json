@@ -1,0 +1,37 @@
+{
+  "name": "dev-harness",
+  "version": "0.2.0",
+  "description": "Harness de calidad para desarrollo agentico en Claude Code y Codex: planes por etapas, gates de confianza, validacion y retrospectiva.",
+  "author": {
+    "name": "Jorge",
+    "url": "https://github.com/jorgeb139"
+  },
+  "repository": "https://github.com/jorgeb139/dev-harness",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "claude-code",
+    "skills",
+    "quality",
+    "agentic-development"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Dev Harness",
+    "shortDescription": "Quality gates for agentic development.",
+    "longDescription": "Dev Harness adds Spanish process skills for staged plans, confidence checks, stage validation, agent orchestration, and retrospectives. It is dual-compatible with Codex skills and Claude Code plugins.",
+    "developerName": "Jorge",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills",
+      "Planning",
+      "Review"
+    ],
+    "defaultPrompt": [
+      "Usa dev-harness para planificar esta tarea.",
+      "Valida esta etapa con dev-harness.",
+      "Aplica la regla 95% antes de seguir."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

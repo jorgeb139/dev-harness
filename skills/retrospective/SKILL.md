@@ -35,3 +35,9 @@ sin aprobación explícita de cada propuesta.
   `bash tests/validate.sh` (debe quedar en verde), commitear con mensaje
   `improve: <lección> (retro de <proyecto>)`, y subir versión patch en
   `.claude-plugin/plugin.json`.
+
+## Branch governance al cierre
+
+Antes de cerrar un plan, confirmar que el trabajo quedo en rama de tarea y que la siguiente
+accion de integracion es PR hacia `develop`. Prohibido aprobar o mergear hacia `develop`,
+`main` o `master` salvo orden explicita del usuario.

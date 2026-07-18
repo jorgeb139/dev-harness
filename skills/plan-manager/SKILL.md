@@ -13,9 +13,11 @@ una hora de trabajo. Si no lo cumple: trabajar directo, sin plan.
 
 ## Flujo obligatorio
 
+0. Invocar `branch-governance` antes de tocar archivos: confirmar/crear `develop`, crear rama
+   nueva de tarea desde `develop`, y registrar rama base/rama de tarea en el plan.
 1. Si existe `docs/plans/ACTIVE-PLAN.md` con Estado "en progreso": PROHIBIDO empezar otro
    plan. Retomar la tarea marcada con ► o preguntar al usuario qué hacer con el plan activo.
-2. Crear el plan usando el formato de `${CLAUDE_PLUGIN_ROOT}/templates/PLAN-template.md`:
+2. Crear el plan usando el formato de `templates/PLAN-template.md` desde la raiz del repo/plugin dev-harness:
    - Etapas lógicamente agrupadas: cada etapa deja software funcional y testeable.
    - Cada etapa declara objetivos como criterios de éxito medibles, con la evidencia que
      los probará (comando y salida esperada).

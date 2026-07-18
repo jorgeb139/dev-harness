@@ -10,9 +10,36 @@ arquitectural) exige plan en docs/plans/ACTIVE-PLAN.md (skill plan-manager); (2)
 etapa exige validación seguridad+regresión+objetivos con evidencia (skill stage-validator);
 (3) regla 95%: sin certeza verificada, preguntar — prohibido inventar o suponer (skill
 confidence-gate); (4) al ejecutar un plan, preguntar modalidad de agentes (skill
-agent-orchestrator); (5) correcciones del usuario van a MUST-DO.md; (6) al cerrar plan,
-correr skill retrospective.
+agent-orchestrator); (5) branch-governance: rama nueva por tarea, develop obligatorio
+como staging, PR tarea->develop y PR develop->main/master, sin aprobar/mergear salvo orden
+explicita; (6) correcciones del usuario van a MUST-DO.md; (7) al cerrar plan, correr skill
+retrospective.
 EOF
+}
+
+run_health() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import subprocess, sys
+try:
+    p = subprocess.run(["bash", ".harness/health.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
+    sys.stdout.write(p.stdout)
+    raise SystemExit(p.returncode)
+except subprocess.TimeoutExpired as e:
+    out = e.stdout or ""
+    if isinstance(out, bytes):
+        out = out.decode(errors="replace")
+    sys.stdout.write(out)
+    print("health-check excedio 60 segundos")
+    raise SystemExit(124)
+except Exception as e:
+    print("dev-harness: no se pudo ejecutar health-check:", e)
+    raise SystemExit(0)
+'
+    return $?
+  fi
+
+  bash .harness/health.sh
 }
 
 main() {
@@ -21,10 +48,10 @@ main() {
   if [ -f ".harness/health.sh" ]; then
     has_output=1
     local health_out
-    if health_out="$(bash .harness/health.sh 2>&1)"; then
+    if health_out="$(run_health 2>&1)"; then
       echo "HEALTH-CHECK: OK — proyecto levanta y tests base pasan."
     else
-      echo "HEALTH-CHECK: FALLO — el proyecto está roto. Salida:"
+      echo "HEALTH-CHECK: FALLO — el proyecto esta roto. Salida:"
       echo "$health_out"
       echo "REGLA: prohibido trabajar en features sobre proyecto roto. Primera tarea obligatoria: repararlo (con systematic-debugging) hasta que .harness/health.sh pase."
     fi
