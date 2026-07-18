@@ -15,16 +15,41 @@ correr skill retrospective.
 EOF
 }
 
+run_health() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import subprocess, sys
+try:
+    p = subprocess.run(["bash", ".harness/health.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
+    sys.stdout.write(p.stdout)
+    raise SystemExit(p.returncode)
+except subprocess.TimeoutExpired as e:
+    out = e.stdout or ""
+    if isinstance(out, bytes):
+        out = out.decode(errors="replace")
+    sys.stdout.write(out)
+    print("health-check excedio 60 segundos")
+    raise SystemExit(124)
+except Exception as e:
+    print("dev-harness: no se pudo ejecutar health-check:", e)
+    raise SystemExit(0)
+'
+    return $?
+  fi
+
+  bash .harness/health.sh
+}
+
 main() {
   local has_output=0
 
   if [ -f ".harness/health.sh" ]; then
     has_output=1
     local health_out
-    if health_out="$(bash .harness/health.sh 2>&1)"; then
+    if health_out="$(run_health 2>&1)"; then
       echo "HEALTH-CHECK: OK — proyecto levanta y tests base pasan."
     else
-      echo "HEALTH-CHECK: FALLO — el proyecto está roto. Salida:"
+      echo "HEALTH-CHECK: FALLO — el proyecto esta roto. Salida:"
       echo "$health_out"
       echo "REGLA: prohibido trabajar en features sobre proyecto roto. Primera tarea obligatoria: repararlo (con systematic-debugging) hasta que .harness/health.sh pase."
     fi

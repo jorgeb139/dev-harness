@@ -75,4 +75,39 @@ grep -q -i "token" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orc
 grep -q -i "aprob" "$ROOT/skills/retrospective/SKILL.md" || fail "retrospective sin aprobación del usuario"
 ok "skills"
 
+
+# --- Task 9: manifiesto Codex ---
+[ -f "$ROOT/.codex-plugin/plugin.json" ] || fail "falta .codex-plugin/plugin.json"
+python3 -c "
+import json,re
+from pathlib import Path
+p=Path('$ROOT/.codex-plugin/plugin.json')
+d=json.load(open(p))
+allowed={'id','name','version','description','skills','apps','mcpServers','interface','author','homepage','repository','license','keywords'}
+extra=set(d)-allowed
+assert not extra, 'campos no aceptados: '+','.join(sorted(extra))
+assert d['name']=='dev-harness'
+assert re.match(r'^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:[-+][0-9A-Za-z.-]+)?$', d['version'])
+assert d['skills']=='./skills/'
+a=d['author']; assert a['name']=='Jorge'
+i=d['interface']
+for k in ['displayName','shortDescription','longDescription','developerName','category']:
+    assert isinstance(i.get(k), str) and i[k].strip(), 'interface.'+k
+assert isinstance(i.get('capabilities'), list) and all(isinstance(x,str) and x.strip() for x in i['capabilities'])
+assert 'defaultPrompt' in i and isinstance(i['defaultPrompt'], list) and 1 <= len(i['defaultPrompt']) <= 3
+assert re.match(r'^#[0-9A-Fa-f]{6}$', i.get('brandColor',''))
+" || fail ".codex-plugin/plugin.json inválido"
+ok "codex plugin.json"
+
+# --- Task 10: compatibilidad Codex/Claude ---
+grep -q "Codex" "$ROOT/README.md" || fail "README no documenta Codex"
+grep -q "Claude Code" "$ROOT/README.md" || fail "README no documenta Claude Code"
+! grep -R "CLAUDE_PLUGIN_ROOT" "$ROOT/skills" "$ROOT/commands" >/dev/null || fail "skills/commands dependen de CLAUDE_PLUGIN_ROOT"
+grep -q "timeout=60" "$ROOT/scripts/session-start.sh" || fail "session-start sin timeout"
+grep -q "timeout=60" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit sin timeout"
+[ -x "$ROOT/scripts/install-codex-skills.sh" ] || fail "install-codex-skills.sh no executable"
+bash -n "$ROOT/scripts/install-codex-skills.sh" || fail "install-codex-skills.sh con error de sintaxis"
+grep -q "~/.agents/skills/dev-harness" "$ROOT/README.md" || fail "README no documenta symlink Codex"
+ok "compatibilidad dual"
+
 echo "ALL OK"
