@@ -40,4 +40,17 @@ ok "templates"
 bash "$ROOT/tests/test-session-start.sh" || fail "test-session-start"
 ok "session-start.sh"
 
+# --- Task 4: hook pre-commit-gate + hooks.json ---
+bash "$ROOT/tests/test-pre-commit-gate.sh" || fail "test-pre-commit-gate"
+python3 -c "
+import json
+d=json.load(open('$ROOT/hooks/hooks.json'))
+h=d['hooks']
+assert 'SessionStart' in h and 'PreToolUse' in h
+flat=json.dumps(d)
+assert 'session-start.sh' in flat and 'pre-commit-gate.sh' in flat
+assert 'CLAUDE_PLUGIN_ROOT' in flat
+" || fail "hooks.json inválido"
+ok "pre-commit-gate.sh + hooks.json"
+
 echo "ALL OK"
