@@ -36,20 +36,48 @@ except Exception as e:
   bash .harness/health.sh
 }
 
+current_branch() {
+  git branch --show-current 2>/dev/null || true
+}
+
+is_protected_branch() {
+  case "$1" in
+    main|master|develop) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case "$cmd" in
-  *"git commit"*) ;;
+  *"git commit"*)
+    branch="$(current_branch)"
+    if is_protected_branch "$branch"; then
+      {
+        echo "dev-harness bloqueó el commit: rama protegida '$branch'."
+        echo "Crear una rama nueva desde develop para esta tarea."
+      } >&2
+      exit 2
+    fi
+    [ -f ".harness/health.sh" ] || exit 0
+    if out="$(run_health 2>&1)"; then
+      exit 0
+    fi
+    {
+      echo "dev-harness bloqueó el commit: .harness/health.sh falla."
+      echo "$out"
+      echo "Arreglar el proyecto antes de commitear (prohibido commitear sobre proyecto roto)."
+    } >&2
+    exit 2
+    ;;
+  *"git merge"*)
+    branch="$(current_branch)"
+    if is_protected_branch "$branch"; then
+      {
+        echo "dev-harness bloqueó el merge directo en rama protegida '$branch'."
+        echo "Integrar mediante PR: tarea -> develop, luego develop -> main/master."
+      } >&2
+      exit 2
+    fi
+    exit 0
+    ;;
   *) exit 0 ;;
 esac
-
-[ -f ".harness/health.sh" ] || exit 0
-
-if out="$(run_health 2>&1)"; then
-  exit 0
-fi
-
-{
-  echo "dev-harness bloqueó el commit: .harness/health.sh falla."
-  echo "$out"
-  echo "Arreglar el proyecto antes de commitear (prohibido commitear sobre proyecto roto)."
-} >&2
-exit 2
