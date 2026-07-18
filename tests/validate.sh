@@ -36,4 +36,8 @@ grep -q "Validación de etapa" "$ROOT/templates/PLAN-template.md" || fail "PLAN-
 bash -n "$ROOT/templates/health.sh" || fail "templates/health.sh con error de sintaxis"
 ok "templates"
 
+# --- Task 3: hook session-start ---
+bash "$ROOT/tests/test-session-start.sh" || fail "test-session-start"
+ok "session-start.sh"
+
 echo "ALL OK"
