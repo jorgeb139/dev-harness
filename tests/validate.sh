@@ -60,4 +60,19 @@ for ref in ARCHITECTURE.md MUST-DO.md health.sh PLAN-template.md; do
 done
 ok "commands/init.md"
 
+# --- Task 6+7+8: skills ---
+for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective; do
+  f="$ROOT/skills/$s/SKILL.md"
+  [ -f "$f" ] || fail "falta skills/$s/SKILL.md"
+  head -1 "$f" | grep -q -- "---" || fail "skills/$s sin frontmatter"
+  grep -q "^name: $s" "$f" || fail "skills/$s frontmatter name incorrecto"
+  grep -q "^description:" "$f" || fail "skills/$s sin description"
+done
+grep -q "95" "$ROOT/skills/confidence-gate/SKILL.md" || fail "confidence-gate sin regla 95"
+grep -q "ACTIVE-PLAN.md" "$ROOT/skills/plan-manager/SKILL.md" || fail "plan-manager sin ruta de plan"
+grep -q -i "regresi" "$ROOT/skills/stage-validator/SKILL.md" || fail "stage-validator sin regresión"
+grep -q -i "token" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin estimado tokens"
+grep -q -i "aprob" "$ROOT/skills/retrospective/SKILL.md" || fail "retrospective sin aprobación del usuario"
+ok "skills"
+
 echo "ALL OK"
