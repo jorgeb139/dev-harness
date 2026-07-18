@@ -1,0 +1,11 @@
+{
+  "name": "dev-harness-marketplace",
+  "owner": { "name": "Jorge" },
+  "plugins": [
+    {
+      "name": "dev-harness",
+      "source": "./",
+      "description": "Harness de calidad para desarrollo agéntico."
+    }
+  ]
+}
