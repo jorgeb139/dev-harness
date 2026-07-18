@@ -27,4 +27,13 @@ ok "marketplace.json"
 [ -f "$ROOT/README.md" ] || fail "falta README.md"
 ok "README.md"
 
+# --- Task 2: templates ---
+for t in ARCHITECTURE.md MUST-DO.md PLAN-template.md health.sh; do
+  [ -f "$ROOT/templates/$t" ] || fail "falta templates/$t"
+done
+grep -q "Tarea actual" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin marcador de tarea actual"
+grep -q "Validación de etapa" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin sección de validación"
+bash -n "$ROOT/templates/health.sh" || fail "templates/health.sh con error de sintaxis"
+ok "templates"
+
 echo "ALL OK"
