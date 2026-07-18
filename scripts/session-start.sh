@@ -10,8 +10,10 @@ arquitectural) exige plan en docs/plans/ACTIVE-PLAN.md (skill plan-manager); (2)
 etapa exige validación seguridad+regresión+objetivos con evidencia (skill stage-validator);
 (3) regla 95%: sin certeza verificada, preguntar — prohibido inventar o suponer (skill
 confidence-gate); (4) al ejecutar un plan, preguntar modalidad de agentes (skill
-agent-orchestrator); (5) correcciones del usuario van a MUST-DO.md; (6) al cerrar plan,
-correr skill retrospective.
+agent-orchestrator); (5) branch-governance: rama nueva por tarea, develop obligatorio
+como staging, PR tarea->develop y PR develop->main/master, sin aprobar/mergear salvo orden
+explicita; (6) correcciones del usuario van a MUST-DO.md; (7) al cerrar plan, correr skill
+retrospective.
 EOF
 }
 

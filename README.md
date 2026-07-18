@@ -23,6 +23,7 @@ El script crea el symlink `~/.agents/skills/dev-harness` de forma idempotente. D
 - `dev-harness:stage-validator`: cierra etapas con seguridad, regresion y objetivos con evidencia.
 - `dev-harness:agent-orchestrator`: decide modalidad multi-agente vs agente unico y estima tokens.
 - `dev-harness:retrospective`: captura lecciones y propone mejoras con aprobacion del usuario.
+- `dev-harness:branch-governance`: impone ramas nuevas, `develop` obligatorio y PRs protegidos.
 
 ## Instalacion en Claude Code
 
@@ -51,7 +52,17 @@ Luego personaliza `ARCHITECTURE.md`, `MUST-DO.md` y `.harness/health.sh` con el 
 - **confidence-gate**: regla 95%; sin certeza verificada, se pregunta; prohibido inventar.
 - **agent-orchestrator**: al ejecutar un plan pregunta modalidad de agentes, modelos y estimado de tokens.
 - **retrospective**: al cerrar planes propone mejoras al propio harness; el usuario aprueba.
-- **Hooks Claude Code**: health-check al iniciar sesion y gate antes de `git commit`.
+- **branch-governance**: todo trabajo va en rama nueva; `develop` es staging obligatorio; la integracion ocurre por PR rama->develop y luego PR develop->main/master.
+- **Hooks Claude Code**: health-check al iniciar sesion y gate antes de `git commit`, incluyendo bloqueo de commits/merges directos en ramas protegidas.
+
+## Politica de ramas
+
+- Todo repo debe tener `main` o `master` y tambien `develop`.
+- `develop` se usa como staging. Si falta, se crea desde `main`/`master` antes de empezar features.
+- Cada tarea se trabaja en una rama nueva desde `develop`, normalmente `codex/<descripcion>`.
+- Al terminar, se abre PR de la rama de tarea hacia `develop`.
+- Para produccion, se abre PR separado de `develop` hacia `main`/`master`.
+- No se aprueba ni mergea ningun PR hacia `develop`, `main` o `master` salvo instruccion explicita del usuario que diga hacerlo.
 
 ## Compatibilidad
 

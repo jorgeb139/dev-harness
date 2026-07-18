@@ -32,6 +32,9 @@ for t in ARCHITECTURE.md MUST-DO.md PLAN-template.md health.sh; do
   [ -f "$ROOT/templates/$t" ] || fail "falta templates/$t"
 done
 grep -q "Tarea actual" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin marcador de tarea actual"
+grep -q "Rama base" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin rama base"
+grep -q "Integracion" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin integracion"
+grep -q "Branch governance" "$ROOT/templates/MUST-DO.md" || fail "MUST-DO sin branch governance"
 grep -q "Validación de etapa" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin sección de validación"
 bash -n "$ROOT/templates/health.sh" || fail "templates/health.sh con error de sintaxis"
 ok "templates"
@@ -61,7 +64,7 @@ done
 ok "commands/init.md"
 
 # --- Task 6+7+8: skills ---
-for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective; do
+for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective branch-governance; do
   f="$ROOT/skills/$s/SKILL.md"
   [ -f "$f" ] || fail "falta skills/$s/SKILL.md"
   head -1 "$f" | grep -q -- "---" || fail "skills/$s sin frontmatter"
@@ -73,6 +76,11 @@ grep -q "ACTIVE-PLAN.md" "$ROOT/skills/plan-manager/SKILL.md" || fail "plan-mana
 grep -q -i "regresi" "$ROOT/skills/stage-validator/SKILL.md" || fail "stage-validator sin regresión"
 grep -q -i "token" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin estimado tokens"
 grep -q -i "aprob" "$ROOT/skills/retrospective/SKILL.md" || fail "retrospective sin aprobación del usuario"
+grep -q "develop" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin develop"
+grep -q "main" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin main"
+grep -q "master" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin master"
+grep -q "PR" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin PR"
+grep -q "branch-governance" "$ROOT/commands/init.md" || fail "init.md sin branch-governance"
 ok "skills"
 
 
@@ -105,6 +113,8 @@ grep -q "Claude Code" "$ROOT/README.md" || fail "README no documenta Claude Code
 ! grep -R "CLAUDE_PLUGIN_ROOT" "$ROOT/skills" "$ROOT/commands" >/dev/null || fail "skills/commands dependen de CLAUDE_PLUGIN_ROOT"
 grep -q "timeout=60" "$ROOT/scripts/session-start.sh" || fail "session-start sin timeout"
 grep -q "timeout=60" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit sin timeout"
+grep -q "rama protegida" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit no bloquea ramas protegidas"
+grep -q "merge directo" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit no bloquea merge directo"
 [ -x "$ROOT/scripts/install-codex-skills.sh" ] || fail "install-codex-skills.sh no executable"
 bash -n "$ROOT/scripts/install-codex-skills.sh" || fail "install-codex-skills.sh con error de sintaxis"
 grep -q "~/.agents/skills/dev-harness" "$ROOT/README.md" || fail "README no documenta symlink Codex"

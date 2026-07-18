@@ -3,6 +3,9 @@
 - **Estado:** [en progreso | pausado | completado]
 - **Spec:** [ruta al documento de diseño]
 - **Tarea actual:** ► Etapa [N], tarea [N.M]
+- **Rama base:** develop
+- **Rama de tarea:** codex/[descripcion]
+- **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
 
 ## Etapa 1: [nombre agrupador lógico]
 

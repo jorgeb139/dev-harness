@@ -11,6 +11,11 @@ PROHIBIDO iniciar la etapa siguiente con validación pendiente o en rojo.
 
 ## 1. Seguridad
 
+Verificar branch governance antes del diff:
+- Rama actual no es `main`, `master` ni `develop`.
+- Existe `develop` y la integracion planeada es PR rama de tarea -> `develop`.
+- No hubo merge, push ni commit directo a ramas protegidas.
+
 Revisar el diff completo de la etapa (`git diff <inicio-etapa>..HEAD`):
 - Secretos: claves, tokens, contraseñas, URLs con credenciales en código o config commiteada.
 - Inputs: todo dato externo (usuario, red, archivo) validado antes de usarse.
