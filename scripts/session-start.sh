@@ -15,8 +15,11 @@ como staging, PR tarea->develop y PR develop->main/master, sin aprobar/mergear s
 explicita; (6) cambios destructivos requieren evidencia de impacto, rollback y confirmación
 explicita (skill destructive-changes); (7) correcciones del usuario van a MUST-DO.md;
 (8) decisiones estables van a ARCHITECTURE.md y contexto persistente a AGENTS.md;
-(9) al iniciar un plan, agent-orchestrator clasifica complejidad, recomienda modalidad y
-registra estimados de tokens; (10) al cerrar plan, correr skill retrospective.
+(9) antes de planificar, planning-director debe analizar impacto y resolver preguntas;
+(10) al cerrar una etapa, invocar security-review, regression-review, test-strategy y
+checkpoint-handoff; (11) al iniciar un plan, agent-orchestrator clasifica complejidad,
+recomienda modalidad y registra estimados de tokens; (12) al cerrar plan, correr skill
+retrospective.
 EOF
 }
 
@@ -45,6 +48,20 @@ except Exception as e:
   bash .harness/health.sh
 }
 
+show_execution_state() {
+  [ -f ".harness/harness-state.py" ] || return 1
+  [ -f "docs/plans/ACTIVE-PLAN.state.json" ] || return 1
+  echo "EXECUTION STATE (docs/plans/ACTIVE-PLAN.state.json):"
+  local state_out
+  if state_out="$(PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py show 2>&1)"; then
+    echo "$state_out"
+  else
+    echo "INVALID: $state_out"
+    echo "REGLA: reparar el estado antes de continuar con la tarea activa."
+  fi
+  return 0
+}
+
 main() {
   local has_output=0
 
@@ -64,6 +81,10 @@ main() {
     has_output=1
     echo "PLAN ACTIVO (docs/plans/ACTIVE-PLAN.md):"
     grep -E "^# Plan:|Tarea actual|Complejidad|Modalidad recomendada|Modalidad elegida|Estimación" docs/plans/ACTIVE-PLAN.md | head -12
+  fi
+
+  if show_execution_state; then
+    has_output=1
   fi
 
   if [ "$has_output" -eq 1 ]; then

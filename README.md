@@ -25,6 +25,11 @@ El script crea el symlink `~/.agents/skills/dev-harness` de forma idempotente. D
 - `dev-harness:retrospective`: captura lecciones y propone mejoras con aprobacion del usuario.
 - `dev-harness:branch-governance`: impone ramas nuevas, `develop` obligatorio y PRs protegidos.
 - `dev-harness:destructive-changes`: frena eliminaciones de datos, APIs, permisos y otros cambios irreversibles.
+- `dev-harness:planning-director`: analiza impacto, flujos, componentes, dependencias y preguntas antes de implementar.
+- `dev-harness:security-review`: gate de secretos, permisos, inputs, datos, migraciones y rollback.
+- `dev-harness:regression-review`: baseline, regresiones dirigidas y suite completa sin desactivar tests.
+- `dev-harness:test-strategy`: decide unitarios, integración, E2E y cobertura mínima de 90% según arquitectura.
+- `dev-harness:checkpoint-handoff`: persiste estado, evidencia, bloqueos y siguiente acción para otro agente.
 
 ## Instalacion en Claude Code
 
@@ -42,6 +47,9 @@ En Codex, pide: "inicializa dev-harness en este proyecto". El agente debe copiar
 - `templates/ARCHITECTURE.md` -> `ARCHITECTURE.md`
 - `templates/MUST-DO.md` -> `MUST-DO.md`
 - `templates/AGENTS.md` -> `AGENTS.md`
+- `templates/CLAUDE.md` -> `CLAUDE.md`
+- `templates/HANDOFF-template.md` -> `docs/plans/HANDOFF-template.md`
+- `scripts/harness-state.py` -> `.harness/harness-state.py`
 - `templates/health.sh` -> `.harness/health.sh`
 - crear `docs/plans/`
 
@@ -57,6 +65,11 @@ Luego personaliza `AGENTS.md`, `ARCHITECTURE.md`, `MUST-DO.md` y `.harness/healt
 - **branch-governance**: todo trabajo va en rama nueva; `develop` es staging obligatorio; la integracion ocurre por PR rama->develop y luego PR develop->main/master.
 - **destructive-changes**: cambios irreversibles requieren impacto, rollback y confirmacion explicita.
 - **AGENTS.md**: concentra defaults de simplicidad, reutilizacion de dependencias, modularidad y compatibilidad segura.
+- **planning-director**: no permite iniciar implementación con impacto o preguntas materiales sin resolver.
+- **security-review**: revisa seguridad antes y después de la implementación.
+- **regression-review**: exige baseline, tests dirigidos, suite completa y documentación de fallos.
+- **test-strategy**: mínimo 90% de cobertura del código nuevo/modificado; integración y E2E cuando la arquitectura lo exige.
+- **checkpoint-handoff**: mantiene el estado recuperable mediante `.harness/harness-state.py` y `ACTIVE-PLAN.HANDOFF.md`.
 - **Hooks Claude Code**: health-check al iniciar sesion y gate antes de `git commit`, incluyendo bloqueo de commits/merges directos en ramas protegidas.
 
 ## Memoria del harness
@@ -71,6 +84,18 @@ no debe considerarse persistente hasta quedar escrito en esos archivos.
 
 Para produccion, no uses `AGENTS.md` como sustituto de backups, auditoria, migraciones o
 documentacion operativa.
+
+## Orquestador y recuperación
+
+El proyecto inicializado usa `python3 .harness/harness-state.py` para persistir el ciclo:
+
+```text
+pending -> in_progress -> blocked -> in_progress -> completed
+```
+
+Comandos principales: `init`, `start`, `checkpoint`, `advance`, `block`, `resume`,
+`complete`, `show` y `validate`. Si el estado es inválido, el siguiente commit se bloquea
+para evitar perder el punto de reanudación.
 
 ## Politica de ramas
 

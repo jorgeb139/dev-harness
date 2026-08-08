@@ -13,6 +13,13 @@
 - **Estimación multi-agente:** [rango de tokens]
 - **Estimación mixta:** [rango de tokens]
 - **Modelos por rol:** [arquitectura/revisión | implementación | tareas mecánicas]
+- **Mapa de impacto:** [ruta o resumen de flujos, componentes, dependencias y datos afectados]
+- **Preguntas abiertas:** [lista y estado; no iniciar implementación con preguntas materiales abiertas]
+- **Estrategia de tests:** [unitarios | integración | E2E | no aplica, con comandos reales]
+- **Cobertura objetivo:** [>=90% cambiado; 100% si es barato; exclusiones justificadas]
+- **Estado de seguridad:** [pendiente | en revisión | verde | bloqueado]
+- **Estado de regresión:** [pendiente | en revisión | verde | bloqueado]
+- **Estado de handoff:** [pendiente | válido | bloqueado]
 
 ## Etapa 1: [nombre agrupador lógico]
 

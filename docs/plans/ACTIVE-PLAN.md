@@ -2,7 +2,7 @@
 
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-08-agentic-harness-v2-design.md`
-- **Tarea actual:** ► Etapa 2, tarea 2.1
+- **Tarea actual:** ► Etapa 3, tarea 3.3
 - **Rama base:** develop
 - **Rama de tarea:** codex/agentic-harness-v2
 - **Integración:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -45,16 +45,18 @@ Validación: seguridad ✅ | regresión ✅ (`bash tests/test-harness-state.sh` 
 - [ ] Política de 90%/100% y criterios integración/E2E documentados.
 
 **Tareas:**
-- [ ] 2.1 Planning and security role skills
-- [ ] 2.2 Regression and test-strategy role skills
-- [ ] 2.3 Checkpoint role and plan schema
+- [x] 2.1 Planning and security role skills
+- [x] 2.2 Regression and test-strategy role skills
+- [x] 2.3 Checkpoint role and plan schema
 
 **Validación de etapa:**
-- [ ] Seguridad revisada
-- [ ] Regresión revisada
-- [ ] Test strategy revisada
-- [ ] Handoff actualizado
-- [ ] Objetivos cumplidos con evidencia
+- [x] Seguridad revisada: skills exigen secretos, permisos, inputs, rollback y confirmación; no hay dependencias nuevas.
+- [x] Regresión revisada: `bash tests/validate.sh` -> `ALL OK`; la skill exige baseline, targeted y suite completa.
+- [x] Test strategy revisada: 90% mínimo de código nuevo/modificado, 100% solo con coste bajo, integración/E2E condicionales.
+- [x] Handoff actualizado: `harness-state.py checkpoint` y `advance` registraron evidencia real.
+- [x] Objetivos cumplidos con evidencia: cinco skills, plantilla HANDOFF y campos de impacto/tests en PLAN.
+
+Validación: seguridad ✅ | regresión ✅ (`bash tests/validate.sh`) | test strategy ✅ | handoff ✅ — 2026-08-08
 
 ## Etapa 3: Orchestration, hooks, initialization, and validation
 
@@ -64,8 +66,8 @@ Validación: seguridad ✅ | regresión ✅ (`bash tests/test-harness-state.sh` 
 - [ ] Suite completa y validaciones en verde; versión 0.3.0 registrada.
 
 **Tareas:**
-- [ ] 3.1 Integrate lifecycle skills and hooks
-- [ ] 3.2 Initialize and document the orchestrator
+- [x] 3.1 Integrate lifecycle skills and hooks
+- [x] 3.2 Initialize and document the orchestrator
 - [ ] 3.3 Full verification and handoff
 
 **Validación de etapa:**
