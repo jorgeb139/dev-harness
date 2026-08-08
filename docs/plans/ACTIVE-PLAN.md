@@ -1,8 +1,8 @@
 # Plan: agentic harness v2
 
-- **Estado:** en progreso
+- **Estado:** completado
 - **Spec:** `docs/superpowers/specs/2026-08-08-agentic-harness-v2-design.md`
-- **Tarea actual:** ► Etapa 3, tarea 3.3
+- **Tarea actual:** completada
 - **Rama base:** develop
 - **Rama de tarea:** codex/agentic-harness-v2
 - **Integración:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -19,9 +19,9 @@
 ## Etapa 1: State engine and resumable handoff
 
 **Objetivos (criterios de éxito):**
-- [ ] CLI de estado con transiciones válidas, validación y escritura atómica.
-- [ ] Handoff generado con siguiente acción, bloqueos, evidencia y último commit verificado.
-- [ ] Tests de transición, corrupción e interrupción en verde.
+- [x] CLI de estado con transiciones válidas, validación y escritura atómica.
+- [x] Handoff generado con siguiente acción, bloqueos, evidencia y último commit verificado.
+- [x] Tests de transición, corrupción e interrupción en verde.
 
 **Tareas:**
 - [x] 1.1 State contract tests
@@ -40,9 +40,9 @@ Validación: seguridad ✅ | regresión ✅ (`bash tests/test-harness-state.sh` 
 ## Etapa 2: Director, safety, regression, and test-strategy roles
 
 **Objetivos (criterios de éxito):**
-- [ ] Skills especializadas con entradas, salidas y gates obligatorios.
-- [ ] Plan registra impacto, preguntas abiertas, seguridad, regresión y estrategia de tests.
-- [ ] Política de 90%/100% y criterios integración/E2E documentados.
+- [x] Skills especializadas con entradas, salidas y gates obligatorios.
+- [x] Plan registra impacto, preguntas abiertas, seguridad, regresión y estrategia de tests.
+- [x] Política de 90%/100% y criterios integración/E2E documentados.
 
 **Tareas:**
 - [x] 2.1 Planning and security role skills
@@ -68,11 +68,13 @@ Validación: seguridad ✅ | regresión ✅ (`bash tests/validate.sh`) | test st
 **Tareas:**
 - [x] 3.1 Integrate lifecycle skills and hooks
 - [x] 3.2 Initialize and document the orchestrator
-- [ ] 3.3 Full verification and handoff
+- [x] 3.3 Full verification and handoff
 
 **Validación de etapa:**
-- [ ] Seguridad ✅
-- [ ] Regresión ✅
-- [ ] Test strategy ✅
-- [ ] Handoff ✅
-- [ ] Objetivos ✅
+- [x] Seguridad ✅: branch correcta, `git diff --check`, scan de secretos sin hallazgos y sin dependencias nuevas.
+- [x] Regresión ✅: `bash tests/test-harness-state.sh`, `bash tests/test-session-start.sh`, `bash tests/test-pre-commit-gate.sh`, `bash tests/validate.sh` -> `ALL OK`.
+- [x] Test strategy ✅: unitarios del state engine y tests de integración de hooks; E2E no aplica a este plugin sin UI/API desplegable.
+- [x] Handoff ✅: state válido y último commit verificado `507d112`.
+- [x] Objetivos ✅: lifecycle, inicialización, `CLAUDE.md`, roles, gates y versión `0.3.0`.
+
+Validación: seguridad ✅ | regresión ✅ | test strategy ✅ | handoff ✅ | objetivos ✅ — 2026-08-08
