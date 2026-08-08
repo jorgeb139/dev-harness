@@ -36,6 +36,12 @@ except Exception as e:
   bash .harness/health.sh
 }
 
+validate_execution_state() {
+  [ -f ".harness/harness-state.py" ] || return 0
+  [ -f "docs/plans/ACTIVE-PLAN.state.json" ] || return 0
+  PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py validate
+}
+
 current_branch() {
   git branch --show-current 2>/dev/null || true
 }
@@ -57,14 +63,23 @@ case "$cmd" in
       } >&2
       exit 2
     fi
-    [ -f ".harness/health.sh" ] || exit 0
-    if out="$(run_health 2>&1)"; then
+    if [ -f ".harness/health.sh" ]; then
+      if ! out="$(run_health 2>&1)"; then
+        {
+          echo "dev-harness bloqueó el commit: .harness/health.sh falla."
+          echo "$out"
+          echo "Arreglar el proyecto antes de commitear (prohibido commitear sobre proyecto roto)."
+        } >&2
+        exit 2
+      fi
+    fi
+    if state_out="$(validate_execution_state 2>&1)"; then
       exit 0
     fi
     {
-      echo "dev-harness bloqueó el commit: .harness/health.sh falla."
-      echo "$out"
-      echo "Arreglar el proyecto antes de commitear (prohibido commitear sobre proyecto roto)."
+      echo "dev-harness bloqueó el commit: execution state inválido."
+      echo "$state_out"
+      echo "Reparar docs/plans/ACTIVE-PLAN.state.json antes de commitear."
     } >&2
     exit 2
     ;;

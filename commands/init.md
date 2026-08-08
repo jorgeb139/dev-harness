@@ -12,6 +12,9 @@ Inicializa dev-harness en el proyecto actual (cwd). En Codex, seguir estos mismo
    - `<raiz-del-repo-dev-harness>/templates/ARCHITECTURE.md` → `./ARCHITECTURE.md`
    - `<raiz-del-repo-dev-harness>/templates/MUST-DO.md` → `./MUST-DO.md`
    - `<raiz-del-repo-dev-harness>/templates/AGENTS.md` → `./AGENTS.md`
+   - `<raiz-del-repo-dev-harness>/templates/CLAUDE.md` → `./CLAUDE.md`
+   - `<raiz-del-repo-dev-harness>/templates/HANDOFF-template.md` → `./docs/plans/HANDOFF-template.md`
+   - `<raiz-del-repo-dev-harness>/scripts/harness-state.py` → `./.harness/harness-state.py` (crear `.harness/`)
    - `<raiz-del-repo-dev-harness>/templates/health.sh` → `./.harness/health.sh` (crear `.harness/`, dar permisos con `chmod +x`)
    - Crear directorio `docs/plans/` (los planes usan `<raiz-del-repo-dev-harness>/templates/PLAN-template.md` como formato)
 4. Personalizar con el usuario, preguntando una cosa a la vez:
@@ -22,4 +25,4 @@ Inicializa dev-harness en el proyecto actual (cwd). En Codex, seguir estos mismo
    - Decisiones de diseño y excepciones del proyecto → `AGENTS.md` y `ARCHITECTURE.md`.
 5. Correr `bash .harness/health.sh` y mostrar el resultado. Si falla, ofrecer arreglar el
    proyecto como primera tarea.
-6. Sugerir commit en rama de tarea: `git add AGENTS.md ARCHITECTURE.md MUST-DO.md .harness docs/plans && git commit -m "chore: inicializar dev-harness"`.
+6. Sugerir commit en rama de tarea: `git add AGENTS.md CLAUDE.md ARCHITECTURE.md MUST-DO.md .harness docs/plans && git commit -m "chore: inicializar dev-harness"`.

@@ -5,11 +5,12 @@ description: Usar al terminar TODAS las tareas de una etapa de un plan activo, a
 
 # stage-validator
 
-Correr las tres validaciones EN ORDEN y escribir el resultado en el bloque
+Invocar y correr los roles `security-review`, `regression-review`, `test-strategy` y
+`checkpoint-handoff`; después correr las validaciones EN ORDEN y escribir el resultado en el bloque
 "Validación de etapa" del plan. Si cualquiera falla: arreglar dentro de la etapa y repetir.
 PROHIBIDO iniciar la etapa siguiente con validación pendiente o en rojo.
 
-## 1. Seguridad
+## 1. Seguridad (`security-review`)
 
 Verificar branch governance antes del diff:
 - Rama actual no es `main`, `master` ni `develop`.
@@ -23,7 +24,7 @@ Revisar el diff completo de la etapa (`git diff <inicio-etapa>..HEAD`):
 - Dependencias nuevas: nombre exacto verificado en el registro oficial (typosquatting),
   mantenida, licencia compatible.
 
-## 2. Regresiones
+## 2. Regresiones (`regression-review`)
 
 - Correr la suite COMPLETA de tests del proyecto (no solo los nuevos) y
   `bash .harness/health.sh`. Pegar comando y resumen real de salida en el plan.
@@ -32,7 +33,13 @@ Revisar el diff completo de la etapa (`git diff <inicio-etapa>..HEAD`):
 - Cualquier test previamente verde ahora rojo = regresión: se arregla, jamás se
   deshabilita ni se marca skip para avanzar.
 
-## 3. Objetivos de la etapa
+## 3. Estrategia de tests (`test-strategy`)
+
+- Confirmar que el plan declara tests unitarios, integración y E2E aplicables o la razón de no aplicar.
+- Confirmar cobertura de al menos 90% en código nuevo/modificado, o registrar el bloqueo y la excepción aprobada.
+- Subir a 100% solo cuando el coste marginal sea bajo y los tests sean de comportamiento.
+
+## 4. Objetivos de la etapa
 
 Por cada criterio de éxito declarado en la etapa: marcar cumplido SOLO con evidencia
 concreta (comando ejecutado + salida, test en verde, captura). "Debería funcionar" no es
@@ -41,4 +48,4 @@ evidencia. Si un objetivo no se cumplió: la etapa sigue abierta.
 ## Registro
 
 Al pasar todo, escribir en el plan bajo la etapa:
-`Validación: seguridad ✅ | regresión ✅ (comando: <cmd>) | objetivos ✅ — AAAA-MM-DD`
+`Validación: seguridad ✅ | regresión ✅ (comando: <cmd>) | test strategy ✅ | handoff ✅ | objetivos ✅ — AAAA-MM-DD`

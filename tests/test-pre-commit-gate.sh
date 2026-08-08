@@ -39,4 +39,12 @@ printf '#!/bin/bash\nexit 0\n' > .harness/health.sh
 payload "git commit -m x" | bash "$S"
 [ $? -eq 0 ] || fail "bloqueó commit con proyecto sano"
 
+# Caso 5: plan activo con estado inválido -> bloquea commit
+mkdir -p "$TMP/p5/.harness" "$TMP/p5/docs/plans"; cd "$TMP/p5"; git init -q; git checkout -q -b codex/test
+cp "$ROOT/scripts/harness-state.py" .harness/harness-state.py
+printf '{"status":"broken"}\n' > docs/plans/ACTIVE-PLAN.state.json
+err="$(payload "git commit -m x" | bash "$S" 2>&1 >/dev/null)"; rc=$?
+[ $rc -eq 2 ] || fail "esperaba exit 2 con estado inválido, fue $rc"
+echo "$err" | grep -q "execution state" || fail "stderr sin bloqueo de estado: $err"
+
 echo "ALL OK"
