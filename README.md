@@ -21,9 +21,10 @@ El script crea el symlink `~/.agents/skills/dev-harness` de forma idempotente. D
 - `dev-harness:plan-manager`: exige plan por etapas para tareas complejas.
 - `dev-harness:confidence-gate`: regla 95%; verificar o preguntar antes de suponer.
 - `dev-harness:stage-validator`: cierra etapas con seguridad, regresion y objetivos con evidencia.
-- `dev-harness:agent-orchestrator`: decide modalidad multi-agente vs agente unico y estima tokens.
+- `dev-harness:agent-orchestrator`: clasifica complejidad, recomienda agente único, modalidad mixta o multi-agente y estima tokens.
 - `dev-harness:retrospective`: captura lecciones y propone mejoras con aprobacion del usuario.
 - `dev-harness:branch-governance`: impone ramas nuevas, `develop` obligatorio y PRs protegidos.
+- `dev-harness:destructive-changes`: frena eliminaciones de datos, APIs, permisos y otros cambios irreversibles.
 
 ## Instalacion en Claude Code
 
@@ -40,20 +41,36 @@ En Codex, pide: "inicializa dev-harness en este proyecto". El agente debe copiar
 
 - `templates/ARCHITECTURE.md` -> `ARCHITECTURE.md`
 - `templates/MUST-DO.md` -> `MUST-DO.md`
+- `templates/AGENTS.md` -> `AGENTS.md`
 - `templates/health.sh` -> `.harness/health.sh`
 - crear `docs/plans/`
 
-Luego personaliza `ARCHITECTURE.md`, `MUST-DO.md` y `.harness/health.sh` con el stack, reglas y comandos reales del proyecto.
+Luego personaliza `AGENTS.md`, `ARCHITECTURE.md`, `MUST-DO.md` y `.harness/health.sh` con el stack, reglas y comandos reales del proyecto.
 
 ## Que impone
 
 - **plan-manager**: tareas complejas exigen plan por etapas en `docs/plans/ACTIVE-PLAN.md`.
 - **stage-validator**: cada etapa cierra con validacion de seguridad, regresion y objetivos con evidencia.
 - **confidence-gate**: regla 95%; sin certeza verificada, se pregunta; prohibido inventar.
-- **agent-orchestrator**: al ejecutar un plan pregunta modalidad de agentes, modelos y estimado de tokens.
+- **agent-orchestrator**: al ejecutar un plan calcula `T/F/S/R/D`, recomienda modalidad, muestra los tres estimados y registra la decisión del usuario.
 - **retrospective**: al cerrar planes propone mejoras al propio harness; el usuario aprueba.
 - **branch-governance**: todo trabajo va en rama nueva; `develop` es staging obligatorio; la integracion ocurre por PR rama->develop y luego PR develop->main/master.
+- **destructive-changes**: cambios irreversibles requieren impacto, rollback y confirmacion explicita.
+- **AGENTS.md**: concentra defaults de simplicidad, reutilizacion de dependencias, modularidad y compatibilidad segura.
 - **Hooks Claude Code**: health-check al iniciar sesion y gate antes de `git commit`, incluyendo bloqueo de commits/merges directos en ramas protegidas.
+
+## Memoria del harness
+
+El harness no tiene una base de datos de memoria semantica propia. La memoria persistente
+del proyecto vive en archivos versionables: `AGENTS.md` contiene criterios de ingenieria,
+`ARCHITECTURE.md` decisiones estables, `MUST-DO.md` reglas aprobadas y
+`docs/plans/ACTIVE-PLAN.md` el trabajo en curso. Git conserva el historial y permite
+recuperar decisiones anteriores. En cada inicio de sesion, `session-start.sh` inyecta
+reglas y el resumen del plan activo; el contexto conversacional del agente es temporal y
+no debe considerarse persistente hasta quedar escrito en esos archivos.
+
+Para produccion, no uses `AGENTS.md` como sustituto de backups, auditoria, migraciones o
+documentacion operativa.
 
 ## Politica de ramas
 

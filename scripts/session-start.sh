@@ -9,11 +9,14 @@ emit_rules() {
 arquitectural) exige plan en docs/plans/ACTIVE-PLAN.md (skill plan-manager); (2) cerrar
 etapa exige validación seguridad+regresión+objetivos con evidencia (skill stage-validator);
 (3) regla 95%: sin certeza verificada, preguntar — prohibido inventar o suponer (skill
-confidence-gate); (4) al ejecutar un plan, preguntar modalidad de agentes (skill
-agent-orchestrator); (5) branch-governance: rama nueva por tarea, develop obligatorio
+confidence-gate); (4) al ejecutar un plan, clasificar complejidad, recomendar modalidad y
+mostrar estimados de tokens (skill agent-orchestrator); (5) branch-governance: rama nueva, develop obligatorio
 como staging, PR tarea->develop y PR develop->main/master, sin aprobar/mergear salvo orden
-explicita; (6) correcciones del usuario van a MUST-DO.md; (7) al cerrar plan, correr skill
-retrospective.
+explicita; (6) cambios destructivos requieren evidencia de impacto, rollback y confirmación
+explicita (skill destructive-changes); (7) correcciones del usuario van a MUST-DO.md;
+(8) decisiones estables van a ARCHITECTURE.md y contexto persistente a AGENTS.md;
+(9) al iniciar un plan, agent-orchestrator clasifica complejidad, recomienda modalidad y
+registra estimados de tokens; (10) al cerrar plan, correr skill retrospective.
 EOF
 }
 
@@ -60,7 +63,7 @@ main() {
   if [ -f "docs/plans/ACTIVE-PLAN.md" ]; then
     has_output=1
     echo "PLAN ACTIVO (docs/plans/ACTIVE-PLAN.md):"
-    grep -E "^# Plan:|Tarea actual" docs/plans/ACTIVE-PLAN.md | head -5
+    grep -E "^# Plan:|Tarea actual|Complejidad|Modalidad recomendada|Modalidad elegida|Estimación" docs/plans/ACTIVE-PLAN.md | head -12
   fi
 
   if [ "$has_output" -eq 1 ]; then
