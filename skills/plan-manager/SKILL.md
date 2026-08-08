@@ -23,8 +23,10 @@ una hora de trabajo. Si no lo cumple: trabajar directo, sin plan.
      los probará (comando y salida esperada).
    - Tareas numeradas N.M con checkbox.
 3. Presentar el plan al usuario y obtener aprobación ANTES de ejecutar.
-4. Al iniciar la ejecución: invocar la skill agent-orchestrator (pregunta modalidad de
-   agentes, modelos y tokens) — obligatorio, no opcional.
+4. Al iniciar la ejecución: invocar la skill agent-orchestrator (clasifica complejidad,
+   recomienda modalidad, presenta estimados de tokens y pide confirmación) — obligatorio,
+   no opcional. Registrar `T/F/S/R/D`, recomendación, decisión, motivo, estimados y modelos
+   en `ACTIVE-PLAN.md` antes de ejecutar la primera tarea.
 5. Durante ejecución, tras terminar CADA tarea: marcar su checkbox y mover el marcador
    `**Tarea actual:** ► Etapa N, tarea N.M` a la siguiente. El plan desactualizado es un
    bug del proceso.

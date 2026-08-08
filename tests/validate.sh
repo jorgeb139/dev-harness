@@ -28,13 +28,18 @@ ok "marketplace.json"
 ok "README.md"
 
 # --- Task 2: templates ---
-for t in ARCHITECTURE.md MUST-DO.md PLAN-template.md health.sh; do
+for t in AGENTS.md ARCHITECTURE.md MUST-DO.md PLAN-template.md health.sh; do
   [ -f "$ROOT/templates/$t" ] || fail "falta templates/$t"
 done
 grep -q "Tarea actual" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin marcador de tarea actual"
 grep -q "Rama base" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin rama base"
 grep -q "Integracion" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin integracion"
+grep -q "Complejidad" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin complejidad"
+grep -q "Modalidad recomendada" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin recomendacion"
+grep -q "Estimación multi-agente" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin estimado multi-agente"
 grep -q "Branch governance" "$ROOT/templates/MUST-DO.md" || fail "MUST-DO sin branch governance"
+grep -q "rollback" "$ROOT/templates/AGENTS.md" || fail "AGENTS sin compatibilidad segura"
+grep -q "Memoria del proyecto" "$ROOT/templates/AGENTS.md" || fail "AGENTS sin memoria persistente documentada"
 grep -q "Validación de etapa" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin sección de validación"
 bash -n "$ROOT/templates/health.sh" || fail "templates/health.sh con error de sintaxis"
 ok "templates"
@@ -58,13 +63,13 @@ ok "pre-commit-gate.sh + hooks.json"
 
 # --- Task 5: comando init ---
 [ -f "$ROOT/commands/init.md" ] || fail "falta commands/init.md"
-for ref in ARCHITECTURE.md MUST-DO.md health.sh PLAN-template.md; do
+for ref in AGENTS.md ARCHITECTURE.md MUST-DO.md health.sh PLAN-template.md; do
   grep -q "$ref" "$ROOT/commands/init.md" || fail "init.md no referencia $ref"
 done
 ok "commands/init.md"
 
 # --- Task 6+7+8: skills ---
-for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective branch-governance; do
+for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective branch-governance destructive-changes; do
   f="$ROOT/skills/$s/SKILL.md"
   [ -f "$f" ] || fail "falta skills/$s/SKILL.md"
   head -1 "$f" | grep -q -- "---" || fail "skills/$s sin frontmatter"
@@ -75,12 +80,17 @@ grep -q "95" "$ROOT/skills/confidence-gate/SKILL.md" || fail "confidence-gate si
 grep -q "ACTIVE-PLAN.md" "$ROOT/skills/plan-manager/SKILL.md" || fail "plan-manager sin ruta de plan"
 grep -q -i "regresi" "$ROOT/skills/stage-validator/SKILL.md" || fail "stage-validator sin regresión"
 grep -q -i "token" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin estimado tokens"
+grep -q "Recomendación" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin recomendacion"
+grep -q "T/F/S/R/D" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin variables de complejidad"
+grep -q "modalidad mixta" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin modalidad mixta"
 grep -q -i "aprob" "$ROOT/skills/retrospective/SKILL.md" || fail "retrospective sin aprobación del usuario"
 grep -q "develop" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin develop"
 grep -q "main" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin main"
 grep -q "master" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin master"
 grep -q "PR" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin PR"
+grep -q "confirmación explícita" "$ROOT/skills/destructive-changes/SKILL.md" || fail "destructive-changes sin confirmacion"
 grep -q "branch-governance" "$ROOT/commands/init.md" || fail "init.md sin branch-governance"
+grep -q "agent-orchestrator" "$ROOT/skills/plan-manager/SKILL.md" || fail "plan-manager sin agent-orchestrator"
 ok "skills"
 
 
@@ -112,6 +122,7 @@ grep -q "Codex" "$ROOT/README.md" || fail "README no documenta Codex"
 grep -q "Claude Code" "$ROOT/README.md" || fail "README no documenta Claude Code"
 ! grep -R "CLAUDE_PLUGIN_ROOT" "$ROOT/skills" "$ROOT/commands" >/dev/null || fail "skills/commands dependen de CLAUDE_PLUGIN_ROOT"
 grep -q "timeout=60" "$ROOT/scripts/session-start.sh" || fail "session-start sin timeout"
+grep -q "recomendar modalidad" "$ROOT/scripts/session-start.sh" || fail "session-start sin recomendacion de modalidad"
 grep -q "timeout=60" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit sin timeout"
 grep -q "rama protegida" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit no bloquea ramas protegidas"
 grep -q "merge directo" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit no bloquea merge directo"

@@ -6,6 +6,13 @@
 - **Rama base:** develop
 - **Rama de tarea:** codex/[descripcion]
 - **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
+- **Complejidad:** [baja | media | alta] (T=[tareas], F=[archivos], S=[etapas], R=[riesgo], D=[duracion])
+- **Modalidad recomendada:** [agente único | mixta | multi-agente] — [motivo]
+- **Modalidad elegida:** [agente único | mixta | multi-agente]
+- **Estimación agente único:** [rango de tokens]
+- **Estimación multi-agente:** [rango de tokens]
+- **Estimación mixta:** [rango de tokens]
+- **Modelos por rol:** [arquitectura/revisión | implementación | tareas mecánicas]
 
 ## Etapa 1: [nombre agrupador lógico]
 

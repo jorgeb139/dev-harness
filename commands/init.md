@@ -11,6 +11,7 @@ Inicializa dev-harness en el proyecto actual (cwd). En Codex, seguir estos mismo
 3. Copiar plantillas desde el plugin (no sobrescribir archivos existentes; si existen, saltarlos y avisar):
    - `<raiz-del-repo-dev-harness>/templates/ARCHITECTURE.md` → `./ARCHITECTURE.md`
    - `<raiz-del-repo-dev-harness>/templates/MUST-DO.md` → `./MUST-DO.md`
+   - `<raiz-del-repo-dev-harness>/templates/AGENTS.md` → `./AGENTS.md`
    - `<raiz-del-repo-dev-harness>/templates/health.sh` → `./.harness/health.sh` (crear `.harness/`, dar permisos con `chmod +x`)
    - Crear directorio `docs/plans/` (los planes usan `<raiz-del-repo-dev-harness>/templates/PLAN-template.md` como formato)
 4. Personalizar con el usuario, preguntando una cosa a la vez:
@@ -18,6 +19,7 @@ Inicializa dev-harness en el proyecto actual (cwd). En Codex, seguir estos mismo
    - Comandos reales de build y test → escribirlos en `.harness/health.sh` (reemplazar el
      placeholder; debe terminar en < 60 segundos, usar subconjunto rápido de tests si la suite es lenta).
    - Reglas innegociables iniciales → `MUST-DO.md`.
+   - Decisiones de diseño y excepciones del proyecto → `AGENTS.md` y `ARCHITECTURE.md`.
 5. Correr `bash .harness/health.sh` y mostrar el resultado. Si falla, ofrecer arreglar el
    proyecto como primera tarea.
-6. Sugerir commit en rama de tarea: `git add ARCHITECTURE.md MUST-DO.md .harness docs/plans && git commit -m "chore: inicializar dev-harness"`.
+6. Sugerir commit en rama de tarea: `git add AGENTS.md ARCHITECTURE.md MUST-DO.md .harness docs/plans && git commit -m "chore: inicializar dev-harness"`.
