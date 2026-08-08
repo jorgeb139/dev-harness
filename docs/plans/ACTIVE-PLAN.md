@@ -2,7 +2,7 @@
 
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-08-agentic-harness-v2-design.md`
-- **Tarea actual:** ► Etapa 1, tarea 1.1
+- **Tarea actual:** ► Etapa 2, tarea 2.1
 - **Rama base:** develop
 - **Rama de tarea:** codex/agentic-harness-v2
 - **Integración:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -24,16 +24,18 @@
 - [ ] Tests de transición, corrupción e interrupción en verde.
 
 **Tareas:**
-- [ ] 1.1 State contract tests
-- [ ] 1.2 Implement the atomic state CLI
-- [ ] 1.3 State-engine regression coverage
+- [x] 1.1 State contract tests
+- [x] 1.2 Implement the atomic state CLI
+- [x] 1.3 State-engine regression coverage
 
 **Validación de etapa:**
-- [ ] Seguridad revisada (secretos, inputs, permisos, dependencias)
-- [ ] Regresión: suite completa de tests en verde (pegar comando y resumen de salida)
-- [ ] Test strategy: cobertura y capas registradas
-- [ ] Handoff generado y validado
-- [ ] Objetivos cumplidos con evidencia
+- [x] Seguridad revisada: rama de tarea correcta, `develop` presente, `git diff --check` en verde, sin secretos ni dependencias nuevas.
+- [x] Regresión: `bash tests/test-harness-state.sh` y `bash tests/validate.sh` -> `ALL OK`; `.harness/health.sh` no aplica en este plugin.
+- [x] Test strategy: CLI probado sin dependencias externas; cobertura de código del proyecto consumidor queda para Stage 2.
+- [x] Handoff generado y validado por `harness-state.py`.
+- [x] Objetivos cumplidos con evidencia: estados, transiciones, historial, lock, escritura atómica y `advance`.
+
+Validación: seguridad ✅ | regresión ✅ (`bash tests/test-harness-state.sh` + `bash tests/validate.sh`) | objetivos ✅ — 2026-08-08
 
 ## Etapa 2: Director, safety, regression, and test-strategy roles
 
