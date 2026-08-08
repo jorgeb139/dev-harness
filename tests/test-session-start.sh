@@ -29,4 +29,15 @@ printf '# Plan: X\n- **Tarea actual:** ► Etapa 2, tarea 2.3\n' > docs/plans/AC
 out="$(bash "$S")" || fail "exit != 0 con plan"
 echo "$out" | grep -q "Etapa 2, tarea 2.3" || fail "no inyecta tarea actual: $out"
 
+# Caso 5: estado estructurado -> muestra handoff resumible
+mkdir -p "$TMP/p5/docs/plans" "$TMP/p5/.harness"; cd "$TMP/p5"
+cp "$ROOT/scripts/harness-state.py" .harness/harness-state.py
+printf '# Plan: state\n' > docs/plans/ACTIVE-PLAN.md
+PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py init \
+  --plan-id state --plan-file docs/plans/ACTIVE-PLAN.md --branch codex/test \
+  --owner tester --phase 1 --task 1.1 --next-action "resume this exact action" >/dev/null
+out="$(bash "$S")" || fail "exit != 0 con estado estructurado"
+echo "$out" | grep -q "EXECUTION STATE" || fail "no reporta estado estructurado: $out"
+echo "$out" | grep -q "resume this exact action" || fail "no reporta next action: $out"
+
 echo "ALL OK"
