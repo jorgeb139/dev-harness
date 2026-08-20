@@ -15,6 +15,8 @@ ENTRY_FIELDS = {
     "id", "rule", "scope", "source", "occurrences", "confidence", "status",
     "created_at", "updated_at", "project_identity",
 }
+OPTIONAL_ENTRY_FIELDS = {"supersedes", "notification"}
+MEMORY_FIELDS = {"schema_version", "project_identity", "entries"}
 APPROVAL_PREFIXES = (
     "please make sure to",
     "make sure to",
@@ -50,12 +52,15 @@ def _new_memory(root: Path) -> dict:
 
 
 def _validate_memory(root: Path, memory: dict) -> None:
-    required = {"schema_version", "project_identity", "entries"}
-    missing = sorted(required - set(memory))
+    missing = sorted(MEMORY_FIELDS - set(memory))
     if missing:
         raise ValueError(f"memory missing fields: {', '.join(missing)}")
+    unexpected = sorted(set(memory) - MEMORY_FIELDS)
+    if unexpected:
+        raise ValueError(f"memory has unexpected fields: {', '.join(unexpected)}")
     if memory["schema_version"] != SCHEMA_VERSION:
         raise ValueError(f"unsupported memory schema: {memory['schema_version']}")
+    _validate_displayable_string(memory["project_identity"], "project_identity")
     if memory["project_identity"] != _project_identity(root):
         raise ValueError("memory identity mismatch")
     if not isinstance(memory["entries"], list):
@@ -66,34 +71,26 @@ def _validate_memory(root: Path, memory: dict) -> None:
         missing = sorted(ENTRY_FIELDS - set(entry))
         if missing:
             raise ValueError(f"memory entry missing fields: {', '.join(missing)}")
-        if not isinstance(entry["id"], str) or not entry["id"]:
-            raise ValueError("memory entry id must be a non-empty string")
-        if not isinstance(entry["rule"], str) or not entry["rule"].strip():
-            raise ValueError("memory entry rule must be a non-empty string")
-        patterns = find_sensitive_patterns(entry["rule"])
-        if patterns:
-            raise ValueError(
-                f"refusing to load sensitive memory content: {', '.join(patterns)}"
-            )
+        unexpected = sorted(set(entry) - ENTRY_FIELDS - OPTIONAL_ENTRY_FIELDS)
+        if unexpected:
+            raise ValueError(f"memory entry has unexpected fields: {', '.join(unexpected)}")
+        for field in (
+            "id", "rule", "scope", "source", "confidence", "status", "created_at",
+            "updated_at", "project_identity",
+        ):
+            _validate_displayable_string(entry[field], field)
         if entry["scope"] != "project":
             raise ValueError("memory entry scope must be project")
-        if not isinstance(entry["source"], str) or not entry["source"]:
-            raise ValueError("memory entry source must be a non-empty string")
         if not isinstance(entry["occurrences"], int) or entry["occurrences"] < 1:
             raise ValueError("memory entry occurrences must be a positive integer")
         if entry["confidence"] not in {"candidate", "high"}:
             raise ValueError("memory entry confidence is invalid")
         if entry["status"] not in {"candidate", "active"}:
             raise ValueError("memory entry status is invalid")
-        if not all(isinstance(entry[field], str) and entry[field] for field in (
-            "created_at", "updated_at", "project_identity",
-        )):
-            raise ValueError("memory entry timestamps and identity must be non-empty strings")
         if entry["project_identity"] != memory["project_identity"]:
             raise ValueError("memory entry identity mismatch")
-        for field in ("supersedes", "notification"):
-            if field in entry and (not isinstance(entry[field], str) or not entry[field]):
-                raise ValueError(f"memory entry {field} must be a non-empty string")
+        for field in OPTIONAL_ENTRY_FIELDS & set(entry):
+            _validate_displayable_string(entry[field], field)
 
 
 def load_memory(root: Path) -> dict:
@@ -139,6 +136,14 @@ def _reject_sensitive(text: str) -> None:
         raise ValueError(f"refusing to persist sensitive memory content: {', '.join(patterns)}")
 
 
+def _validate_displayable_string(value: object, field: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"memory {field} must be a non-empty string")
+    patterns = find_sensitive_patterns(value)
+    if patterns:
+        raise ValueError(f"refusing to load sensitive memory field {field}: {', '.join(patterns)}")
+
+
 def _validate_source(source: str) -> None:
     if not isinstance(source, str) or not source.strip():
         raise ValueError("memory source must be a non-empty string")
@@ -171,7 +176,8 @@ def _new_entry(root: Path, text: str, source: str, status: str, confidence: str)
     }
 
 
-def _save(path: Path, memory: dict) -> None:
+def _save(path: Path, root: Path, memory: dict) -> None:
+    _validate_memory(root, memory)
     atomic_write_json(path, memory)
 
 
@@ -207,7 +213,7 @@ def record_learning(root: Path, text: str, source: str, explicit_always: bool = 
                 "confidence": "high",
                 "notification": _notification(entry),
             })
-        _save(path, memory)
+        _save(path, root, memory)
         return dict(entry)
 
 
@@ -232,7 +238,7 @@ def promote_repeated_correction(root: Path, text: str) -> dict:
                     "confidence": "high",
                     "notification": _notification(entry),
                 })
-        _save(path, memory)
+        _save(path, root, memory)
         return dict(entry)
 
 

@@ -95,6 +95,19 @@ assert entry["project_identity"] == memory["project_identity"]
 assert entry["notification"] == f"MEMORY UPDATED: {entry['id']}"
 PY
 
+PYTHONPATH="$ROOT/scripts" python3 - <<'PY'
+from harness_memory import precedence
+
+assert precedence() == [
+    "current explicit user instruction",
+    "explicit project rule",
+    "learned project memory",
+    "AGENTS.md / CLAUDE.md rules",
+    "general harness skills",
+    "agent defaults",
+]
+PY
+
 first_correction="$(cd "$PROJECT" && python3 "$CLI" memory correction \
   --text "Por favor, siempre usa nombres descriptivos en las pruebas")" \
   || fail "la primera corrección debe funcionar"
@@ -142,7 +155,15 @@ assert entry["status"] == "candidate"
 assert "notification" not in entry
 PY
 
-expect_exit 1 bash -c "cd '$PROJECT' && python3 '$CLI' memory always --text 'api_key=not-a-real-secret'"
+SENSITIVE_INPUT='api_key=not-a-real-secret'
+set +e
+sensitive_output="$(cd "$PROJECT" && python3 "$CLI" memory always --text "$SENSITIVE_INPUT" 2>&1)"
+sensitive_exit=$?
+set -e
+[ "$sensitive_exit" -eq 1 ] || fail "memory always debe rechazar secretos"
+case "$sensitive_output" in
+  *"$SENSITIVE_INPUT"*) fail "el secreto rechazado no debe imprimirse" ;;
+esac
 if grep -R -Fq 'not-a-real-secret' "$PROJECT/.harness/memory" 2>/dev/null; then
   fail "los secretos no deben persistirse en memoria"
 fi
@@ -155,6 +176,32 @@ value = json.load(sys.stdin)
 assert len(value["entries"]) == 3
 '
 
+for field in source supersedes notification; do
+  PROJECT="$PROJECT" FIELD="$field" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["PROJECT"]) / ".harness/memory/memory.json"
+memory = json.loads(path.read_text(encoding="utf-8"))
+entry = memory["entries"][0]
+entry["source"] = "explicit_always"
+entry.pop("supersedes", None)
+entry.pop("notification", None)
+entry[os.environ["FIELD"]] = f"api_key=stored-{os.environ['FIELD']}-secret"
+path.write_text(json.dumps(memory), encoding="utf-8")
+PY
+  SENSITIVE_METADATA="api_key=stored-$field-secret"
+  set +e
+  metadata_output="$(cd "$PROJECT" && python3 "$CLI" memory list 2>&1)"
+  metadata_exit=$?
+  set -e
+  [ "$metadata_exit" -eq 1 ] || fail "memory list debe rechazar $field sensible"
+  case "$metadata_output" in
+    *"$SENSITIVE_METADATA"*) fail "memory list no debe imprimir $field sensible" ;;
+  esac
+done
+
 cp "$PROJECT/PROJECT-CONTEXT.md" "$PROJECT/PROJECT-CONTEXT.backup"
 printf '# malformed\n' > "$PROJECT/PROJECT-CONTEXT.md"
 expect_exit 1 bash -c "cd '$PROJECT' && python3 '$CLI' context check"
@@ -165,6 +212,8 @@ mkdir -p "$OTHER"
 cp -R "$PROJECT/.harness" "$OTHER/.harness"
 expect_exit 2 bash -c "cd '$OTHER' && python3 '$CLI' identity check"
 expect_exit 2 bash -c "cd '$OTHER' && python3 '$CLI' memory list"
+expect_exit 2 bash -c "cd '$OTHER' && python3 '$CLI' memory always --text 'safe rule'"
+expect_exit 2 bash -c "cd '$OTHER' && python3 '$CLI' memory correction --text 'safe correction'"
 PYTHONPATH="$ROOT/scripts" python3 - "$OTHER" <<'PY'
 import sys
 from pathlib import Path
