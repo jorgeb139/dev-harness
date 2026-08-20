@@ -67,8 +67,33 @@ show_execution_state() {
   return 0
 }
 
+show_project_context() {
+  [ -f ".harness/harness-project.py" ] || return 1
+  [ -f ".harness/project-identity.json" ] || return 1
+  local identity_out context_out memory_out
+  if ! identity_out="$(PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py identity check 2>&1)"; then
+    echo "PROJECT IDENTITY: MISMATCH — no se cargan contexto, memoria, plan ni historial."
+    echo "$identity_out"
+    return 0
+  fi
+  echo "PROJECT IDENTITY: OK"
+  if context_out="$(PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py context check 2>&1)"; then
+    echo "PROJECT CONTEXT: $context_out"
+  else
+    echo "PROJECT CONTEXT: INVALID — $context_out"
+  fi
+  if memory_out="$(PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py memory list 2>&1)"; then
+    printf '%s\n' "$memory_out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("PROJECT MEMORY: %d active, %d candidate" % (sum(e.get("status")=="active" for e in d.get("entries", [])), sum(e.get("status")=="candidate" for e in d.get("entries", []))))' 2>/dev/null || echo "PROJECT MEMORY: disponible"
+  fi
+  return 0
+}
+
 main() {
   local has_output=0
+
+  if show_project_context; then
+    has_output=1
+  fi
 
   if [ -f ".harness/health.sh" ]; then
     has_output=1

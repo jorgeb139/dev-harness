@@ -20,6 +20,7 @@ transferir trabajo entre agentes o sesiones.
 Actualizar el state engine y el handoff con:
 
 - plan, etapa, tarea y owner;
+- modalidad elegida, modelos efectivos por rol y tokens estimados/consumidos;
 - estado válido y último commit verificado;
 - archivos y decisiones modificados;
 - tests ejecutados, comando y resultado real;

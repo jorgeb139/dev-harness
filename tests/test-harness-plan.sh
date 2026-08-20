@@ -11,7 +11,19 @@ fail() { echo "FAIL: $1"; exit 1; }
 PROJECT="$TMP/project"
 PLAN="$PROJECT/.harness/plan.json"
 STATE="$PROJECT/.harness/execution-state.json"
+MODELS="$PROJECT/models.json"
 mkdir -p "$PROJECT/.harness" "$PROJECT/docs/plans"
+
+cat > "$MODELS" <<'JSON'
+{
+  "policy": "per-agent",
+  "roles": {
+    "orchestrator": {"model": "top-model", "tokens": "20k-40k"},
+    "implementation": {"model": "standard-model", "tokens": "40k-80k"},
+    "review": {"model": "top-model", "tokens": "20k-40k"}
+  }
+}
+JSON
 
 cat > "$PLAN" <<'JSON'
 {
@@ -43,8 +55,12 @@ cat > "$PLAN" <<'JSON'
       "multi-agent": "130k-260k"
     },
     "models": {
-      "architecture": "top-model",
-      "implementation": "standard-model"
+      "policy": "per-agent",
+      "roles": {
+        "orchestrator": {"model": "top-model", "tokens": "20k-40k"},
+        "implementation": {"model": "standard-model", "tokens": "40k-80k"},
+        "review": {"model": "top-model", "tokens": "20k-40k"}
+      }
     }
   },
   "phases": [
@@ -197,6 +213,7 @@ python3 "$CLI" plan mode \
   --single-estimate 50k-100k \
   --mixed-estimate 90k-180k \
   --multi-estimate 130k-260k \
+  --models-json "$MODELS" \
   --rationale "User selected focused independent review" >/dev/null \
   || fail "plan mode debería persistir la decisión"
 [ -f "$PROJECT/docs/plans/ACTIVE-PLAN.state.json" ] \
@@ -296,7 +313,7 @@ assert "- [ ] `1.1` Create schema and projection" in rendered
 assert "- [x] Validate stable task IDs" in rendered
 assert "Demo \\*structured\\* plan" in rendered
 assert "Unknown \\[task\\] identifiers" in rendered
-assert "Architecture" in rendered and "top-model" in rendered
+assert "Orchestrator" in rendered and "top-model" in rendered
 assert "review queued" in rendered
 assert "Owner role: ``owner`role``" in rendered
 assert "``printf '`state`' && bash tests/test-harness-state.sh``" in rendered
@@ -402,8 +419,12 @@ decision = {
     },
     "rationale": "User selected focused independent review",
     "models": {
-        "architecture": "top-model",
-        "implementation": "standard-model",
+        "policy": "per-agent",
+        "roles": {
+            "orchestrator": {"model": "top-model", "tokens": "20k-40k"},
+            "implementation": {"model": "standard-model", "tokens": "40k-80k"},
+            "review": {"model": "top-model", "tokens": "20k-40k"}
+        },
     },
 }
 record_mode_decision(plan_path, state_path, decision)

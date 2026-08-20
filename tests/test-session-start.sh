@@ -81,4 +81,24 @@ echo "$out" | grep -q "EXECUTION STATE" || fail "no migra estado schema v1: $out
 echo "$out" | grep -q "resume this exact action" \
   || fail "no conserva next action de schema v1: $out"
 
+# Caso 8: identidad cruzada -> no expone memoria del proyecto ajeno
+mkdir -p "$TMP/p8/.harness" "$TMP/p8/docs/plans"; cd "$TMP/p8"
+for f in harness-project.py harness_context.py harness_memory.py harness_store.py; do
+  cp "$ROOT/scripts/$f" ".harness/$f"
+done
+PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py identity init >/dev/null
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path('.harness/project-identity.json')
+d = json.loads(p.read_text())
+d['root'] = '/tmp/another-project'
+p.write_text(json.dumps(d))
+Path('.harness/memory').mkdir()
+Path('.harness/memory/memory.json').write_text('PRIVATE_FOREIGN_RULE')
+PY
+out="$(bash "$S")" || fail "identity mismatch debe seguir siendo fail-open del hook"
+echo "$out" | grep -q "PROJECT IDENTITY: MISMATCH" || fail "no reporta mismatch de identidad: $out"
+! echo "$out" | grep -q "PRIVATE_FOREIGN_RULE" || fail "expuso memoria de otro proyecto: $out"
+
 echo "ALL OK"

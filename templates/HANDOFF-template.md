@@ -7,6 +7,8 @@
 - `branch`: [rama]
 - `last_verified_commit`: [SHA]
 - `updated_at`: [ISO-8601 UTC]
+- `mode`: [single-agent | mixed | multi-agent]
+- `models`: [selección de modelos por rol y estimación de tokens]
 
 ## Next action
 
@@ -23,6 +25,7 @@
 - Coverage: `[porcentaje y alcance, o no aplica]`
 - Security: `[estado y evidencia]`
 - Regression: `[estado y evidencia]`
+- Model budget: `[tokens reales/estimados por rol y modelo]`
 
 ## Completed
 

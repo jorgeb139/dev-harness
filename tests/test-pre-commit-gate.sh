@@ -47,4 +47,22 @@ err="$(payload "git commit -m x" | bash "$S" 2>&1 >/dev/null)"; rc=$?
 [ $rc -eq 2 ] || fail "esperaba exit 2 con estado inválido, fue $rc"
 echo "$err" | grep -q "execution state" || fail "stderr sin bloqueo de estado: $err"
 
+# Caso 6: identidad cruzada -> bloquea antes de usar memoria ajena
+mkdir -p "$TMP/p6/.harness" "$TMP/p6/docs/plans"; cd "$TMP/p6"; git init -q; git checkout -q -b codex/test
+for f in harness-project.py harness_context.py harness_memory.py harness_store.py; do
+  cp "$ROOT/scripts/$f" ".harness/$f"
+done
+PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py identity init >/dev/null
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path('.harness/project-identity.json')
+d = json.loads(p.read_text())
+d['root'] = '/tmp/foreign-project'
+p.write_text(json.dumps(d))
+PY
+err="$(payload "git commit -m x" | bash "$S" 2>&1 >/dev/null)"; rc=$?
+[ $rc -eq 2 ] || fail "esperaba exit 2 con identidad cruzada, fue $rc"
+echo "$err" | grep -q "identidad" || fail "stderr sin bloqueo de identidad: $err"
+
 echo "ALL OK"

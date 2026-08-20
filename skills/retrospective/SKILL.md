@@ -14,6 +14,8 @@ description: Usar al COMPLETAR un plan (o al cerrar una etapa especialmente prob
   confidence-gate).
 - Validaciones de etapa que dejaron pasar un problema.
 - Fricción: pasos del proceso que costaron tiempo sin aportar calidad.
+- Coste de modelos: tokens estimados frente a consumidos por rol, y si la selección automática
+  o manual fue adecuada.
 
 ## 2. Clasificar destino de cada lección
 

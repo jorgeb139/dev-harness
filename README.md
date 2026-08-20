@@ -22,6 +22,8 @@ El script crea el symlink `~/.agents/skills/dev-harness` de forma idempotente. D
 - `dev-harness:confidence-gate`: regla 95%; verificar o preguntar antes de suponer.
 - `dev-harness:stage-validator`: cierra etapas con seguridad, regresion y objetivos con evidencia.
 - `dev-harness:agent-orchestrator`: clasifica complejidad, recomienda agente único, modalidad mixta o multi-agente y estima tokens.
+- `dev-harness:project-context`: valida identidad y carga contexto determinista del proyecto.
+- `dev-harness:project-memory`: persiste reglas aprendidas aisladas por identidad y notifica promociones.
 - `dev-harness:retrospective`: captura lecciones y propone mejoras con aprobacion del usuario.
 - `dev-harness:branch-governance`: impone ramas nuevas, `develop` obligatorio y PRs protegidos.
 - `dev-harness:destructive-changes`: frena eliminaciones de datos, APIs, permisos y otros cambios irreversibles.
@@ -70,6 +72,8 @@ Luego personaliza `AGENTS.md`, `ARCHITECTURE.md`, `MUST-DO.md` y `.harness/healt
 - **regression-review**: exige baseline, tests dirigidos, suite completa y documentación de fallos.
 - **test-strategy**: mínimo 90% de cobertura del código nuevo/modificado; integración y E2E cuando la arquitectura lo exige.
 - **checkpoint-handoff**: mantiene el estado recuperable mediante `.harness/harness-state.py` y `ACTIVE-PLAN.HANDOFF.md`.
+- **Selección de modelos**: el orquestador muestra automático, un modelo para todo o modelo por agente,
+  con modelo y tokens aproximados por rol; el desarrollador elige y la decisión queda en el plan.
 - **Hooks Claude Code**: health-check al iniciar sesion y gate antes de `git commit`, incluyendo bloqueo de commits/merges directos en ramas protegidas.
 
 ## Memoria del harness
@@ -78,9 +82,10 @@ El harness no tiene una base de datos de memoria semantica propia. La memoria pe
 del proyecto vive en archivos versionables: `AGENTS.md` contiene criterios de ingenieria,
 `ARCHITECTURE.md` decisiones estables, `MUST-DO.md` reglas aprobadas y
 `docs/plans/ACTIVE-PLAN.md` el trabajo en curso. Git conserva el historial y permite
-recuperar decisiones anteriores. En cada inicio de sesion, `session-start.sh` inyecta
-reglas y el resumen del plan activo; el contexto conversacional del agente es temporal y
-no debe considerarse persistente hasta quedar escrito en esos archivos.
+recuperar decisiones anteriores. En cada inicio de sesion, `session-start.sh` valida la
+identidad, carga contexto/memoria y luego inyecta reglas y el resumen del plan activo; ante
+mismatch no expone memoria ni historial. El contexto conversacional del agente es temporal
+y no debe considerarse persistente hasta quedar escrito en esos archivos.
 
 Para produccion, no uses `AGENTS.md` como sustituto de backups, auditoria, migraciones o
 documentacion operativa.

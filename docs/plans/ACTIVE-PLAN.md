@@ -3,7 +3,7 @@
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-20-project-memory-orchestration-design.md`
 - **Plan detallado:** `docs/superpowers/plans/2026-08-20-project-memory-orchestration.md`
-- **Tarea actual:** ► Etapa 2, tarea 2.2
+- **Tarea actual:** ► Etapa 4, tarea 4.1
 - **Rama base:** develop
 - **Rama de tarea:** codex/project-memory-orchestration
 - **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -13,14 +13,15 @@
 - **Estimación agente único:** 225k-450k tokens
 - **Estimación multi-agente:** 580k-1.16M tokens
 - **Estimación mixta:** 465k-940k tokens
-- **Modelos por rol:** revisión/arquitectura modelo de mayor capacidad; implementación modelo estándar; tareas mecánicas modelo rápido
+- **Modelos por rol:** orquestador/revisión modelo de mayor capacidad; implementación modelo estándar; tareas mecánicas modelo rápido
+- **Selección de modelos:** el usuario elige automático, un modelo para todo o modelo por agente; cada rol registra modelo y tokens aproximados
 - **Mapa de impacto:** scripts Python de estado, hooks Bash, comandos de inicialización, plantillas, skills, tests y manifiestos de plugin
 - **Preguntas abiertas:** ninguna material; la modalidad fue elegida por el usuario
 - **Estrategia de tests:** unitarios Python, integración de CLI, hooks y validación acumulativa; E2E no aplica al harness CLI
 - **Cobertura objetivo:** >=90% del Python modificado; 100% si el coste marginal es bajo
 - **Estado de seguridad:** verde — diff sin secretos, permisos nuevos ni dependencias externas
 - **Estado de regresión:** verde — `bash tests/validate.sh` y suite dirigida completa pasan
-- **Estado de handoff:** válido — commit verificado `b6f5903`, siguiente acción 2.1
+- **Estado de handoff:** válido — commit verificado tras integración de identidad, hooks y selección de modelos; siguiente acción 4.1
 
 ## Etapa 1: Persistent Foundations
 
@@ -42,9 +43,9 @@
 
 **Tareas:**
 - [x] 2.1 Implement project memory and learning promotion — implementado y revisado; commits `13ae15c`, `16cd82b`
-- [ ] 2.2 Add canonical plan JSON and generated Markdown
+- [x] 2.2 Add canonical plan JSON and generated Markdown — implementado; evidencia tipada, transacciones y handoff consistente; commit `971aa7e`
 
-**Validación de etapa:** pendiente.
+**Validación de etapa:** seguridad ✅ | regresión ✅ (`tests/validate.sh` y suites de plan/estado) | test strategy ✅ (unitarios/CLI/integración aplicables; cobertura numérica pendiente de 4.2) | handoff ✅ | objetivos ✅ — 2026-08-20.
 
 ## Etapa 3: Initialization, Hooks, and Role Contracts
 
@@ -53,11 +54,11 @@
 - [ ] Hooks y skills alineados con identidad, memoria, revisión y elección de modalidad.
 
 **Tareas:**
-- [ ] 3.1 Upgrade initialization and templates
-- [ ] 3.2 Update session and pre-commit enforcement
-- [ ] 3.3 Align skills with the persisted workflow
+- [x] 3.1 Upgrade initialization and templates — identidad, contexto, memoria, plan y política de completitud
+- [x] 3.2 Update session and pre-commit enforcement — mismatch fail-closed y proyección validada
+- [x] 3.3 Align skills with the persisted workflow — roles, modelos, cobertura y gates alineados
 
-**Validación de etapa:** pendiente.
+**Validación de etapa:** seguridad ✅ | regresión ✅ (`tests/test-session-start.sh`, `tests/test-pre-commit-gate.sh`, `tests/validate.sh`) | test strategy ✅ (unitarios/CLI/integración aplicables; E2E no aplica al harness CLI) | handoff ✅ | objetivos ✅ — 2026-08-20.
 
 ## Etapa 4: Completion, Coverage, and Release
 

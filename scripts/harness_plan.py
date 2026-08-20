@@ -21,6 +21,7 @@ TASK_STATUSES = {"pending", "in_progress", "blocked", "completed"}
 PHASE_STATUSES = TASK_STATUSES
 ITEM_STATUSES = {"pending", "in_progress", "blocked", "complete", "completed", "green", "passed"}
 GREEN_STATUSES = {"complete", "completed", "green", "passed"}
+MODEL_POLICIES = {"automatic", "single", "per-agent"}
 REQUIRED_PLAN_FIELDS = {
     "schema_version", "plan_id", "original_scope", "approved_scope", "phases",
     "impact_analysis", "mode_options", "history",
@@ -172,9 +173,26 @@ def _validate_mode_options(mode_options: object) -> None:
         raise ValueError(f"mode_options has estimates for undeclared modes: {', '.join(extra_estimates)}")
     for mode in options:
         _require_string(estimates[mode], f"mode_options.estimates.{mode}")
-    for field in ("rationale", "models"):
-        if field in mode_options:
-            _validate_content(mode_options[field], f"mode_options.{field}")
+    _validate_model_matrix(mode_options.get("models"), "mode_options.models")
+    if "rationale" in mode_options:
+        _validate_content(mode_options["rationale"], "mode_options.rationale")
+
+
+def _validate_model_matrix(value: object, label: str) -> None:
+    matrix = _require_object(value, label)
+    policy = _require_string(matrix.get("policy"), f"{label}.policy")
+    if policy not in MODEL_POLICIES:
+        raise ValueError(f"{label}.policy must be automatic, single, or per-agent")
+    roles = _require_object(matrix.get("roles"), f"{label}.roles")
+    if not roles:
+        raise ValueError(f"{label}.roles must not be empty")
+    for role, raw in roles.items():
+        role_label = f"{label}.roles.{role}"
+        spec = _require_object(raw, role_label)
+        _require_string(spec.get("model"), f"{role_label}.model")
+        _require_string(spec.get("tokens"), f"{role_label}.tokens")
+        if "assumption" in spec:
+            _require_string(spec["assumption"], f"{role_label}.assumption")
 
 
 def _validate_history(history: object) -> None:
@@ -591,7 +609,7 @@ def render_markdown(plan: dict, state: dict | None) -> str:
 
 def _validate_mode_decision(plan: dict, decision: dict) -> dict:
     decision = _require_object(decision, "mode decision")
-    required = {"recommendation", "choice", "estimates"}
+    required = {"recommendation", "choice", "estimates", "models"}
     missing = sorted(required - set(decision))
     if missing:
         raise ValueError(f"mode decision missing fields: {', '.join(missing)}")
@@ -615,9 +633,9 @@ def _validate_mode_decision(plan: dict, decision: dict) -> dict:
     for mode in options:
         _require_string(estimates[mode], f"mode estimate {mode}")
     normalized = copy.deepcopy(decision)
-    for field in ("rationale", "models"):
-        if field in normalized:
-            _validate_content(normalized[field], f"mode decision {field}")
+    _validate_model_matrix(normalized["models"], "mode decision models")
+    if "rationale" in normalized:
+        _validate_content(normalized["rationale"], "mode decision rationale")
     return normalized
 
 
@@ -688,9 +706,9 @@ def record_mode_decision(plan_path: Path, state_path: Path, decision: dict) -> N
             "choice": normalized["choice"],
             "estimates": normalized["estimates"],
         })
-        for field in ("rationale", "models"):
-            if field in normalized:
-                updated_plan["mode_options"][field] = normalized[field]
+        if "rationale" in normalized:
+            updated_plan["mode_options"]["rationale"] = normalized["rationale"]
+        updated_plan["mode_options"]["models"] = normalized["models"]
         updated_plan["history"].append({
             "event": "mode_decision",
             "timestamp": timestamp,
@@ -1014,6 +1032,8 @@ def command_mode(args: argparse.Namespace) -> None:
         }
         if args.rationale:
             decision["rationale"] = args.rationale
+        if args.models_json:
+            decision["models"] = load_json(args.models_json)
     root = _project_root_for_plan(args.plan_json)
     state_path = args.state_json or root / ".harness/execution-state.json"
     record_mode_decision(args.plan_json, state_path, decision)
@@ -1095,6 +1115,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--mixed-estimate")
     mode.add_argument("--multi-estimate")
     mode.add_argument("--rationale")
+    mode.add_argument("--models-json", type=Path)
     mode.set_defaults(handler=command_mode)
     archive = commands.add_parser("archive")
     archive.add_argument("--root", type=Path, default=Path("."))

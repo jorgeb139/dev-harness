@@ -17,7 +17,15 @@ cat > "$TMP/project/.harness/plan.json" <<'JSON'
   "mode_options": {
     "recommendation": "single-agent",
     "options": ["single-agent", "mixed", "multi-agent"],
-    "estimates": {"single-agent": "25k-50k", "mixed": "45k-90k", "multi-agent": "80k-160k"}
+    "estimates": {"single-agent": "25k-50k", "mixed": "45k-90k", "multi-agent": "80k-160k"},
+    "models": {
+      "policy": "automatic",
+      "roles": {
+        "orchestrator": {"model": "runtime-auto", "tokens": "10k-20k"},
+        "implementation": {"model": "runtime-auto", "tokens": "20k-40k"},
+        "review": {"model": "runtime-auto", "tokens": "10k-20k"}
+      }
+    }
   },
   "phases": [
     {

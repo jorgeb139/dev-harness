@@ -1,7 +1,7 @@
 {
   "name": "dev-harness",
   "description": "Harness de calidad para desarrollo agéntico: planes por etapas, validación de seguridad y regresiones, regla 95% de confianza, orquestación de agentes, health-check y auto-mejora.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "Jorge"
   }

@@ -50,6 +50,16 @@ Los rangos incluyen lectura de contexto, implementación, revisión y validació
 estimaciones gruesas, no un presupuesto garantizado. Explicar qué variables las mueven:
 cantidad de tareas, archivos, riesgo, reintentos y volumen de tests.
 
+## Selección de modelos
+
+La recomendación también debe mostrar modelos por rol y tokens aproximados por rol:
+`orquestador`, `implementador`, `revisor`, `tests` y tareas mecánicas cuando apliquen.
+Presentar tres políticas: `automático` (el runtime decide), `un modelo para todo`, o
+`modelo por agente`. Los nombres concretos deben provenir del runtime disponible; nunca
+inventar un modelo o precio. El usuario elige la política y puede reemplazar cualquier
+modelo individual. Registrar selección, modelo efectivo, rango de tokens y supuestos en
+el plan, sin guardar conversaciones ni razonamiento interno.
+
 ## Presentación obligatoria
 
 Mostrar al usuario este resumen antes de la primera tarea:
@@ -61,7 +71,9 @@ Motivo: [dos frases concretas basadas en la matriz]
 Estimación agente único: ... tokens
 Estimación multi-agente: ... tokens
 Estimación mixta: ... tokens
-¿Aceptas la recomendación o eliges otra modalidad?
+Modelos: [política elegida] — orquestador: [modelo, tokens]; implementador: [modelo, tokens];
+revisor: [modelo, tokens]; tests: [modelo, tokens]
+¿Aceptas la recomendación y los modelos, o eliges otra modalidad/modelo?
 ```
 
 ## Modalidades
@@ -70,9 +82,9 @@ Estimación mixta: ... tokens
 
 - Un subagente fresco por tarea (implementador) + revisión independiente por tarea
   (revisor con contexto limpio) + validación de etapa por agente distinto al implementador.
-- Modelos por defecto (ajustables por el usuario): arquitectura/revisión → modelo top
-  (Opus o superior); implementación de tareas bien especificadas → modelo medio (Sonnet);
-  tareas mecánicas (renombres, formateo, scaffolding) → modelo pequeño (Haiku).
+- Modelos por defecto (ajustables por el usuario): orquestación/arquitectura/revisión →
+  modelo de mayor capacidad; implementación → modelo estándar; tareas mecánicas → modelo
+  rápido. Los nombres concretos dependen del runtime y se deben mostrar, no inventar.
 - Costo: más tokens (cada subagente re-lee contexto). Beneficio: revisión cruzada real,
   contexto principal no se agota en sesiones largas.
 
@@ -97,5 +109,6 @@ Anotar al inicio de `ACTIVE-PLAN.md`:
 - modalidad elegida por el usuario;
 - estimado de cada modalidad;
 - modelos por rol.
+- política de selección de modelos y tokens por rol/modelo, separada del total por modalidad;
 
 Respetar la decisión durante toda la ejecución salvo que el usuario la cambie explícitamente.
