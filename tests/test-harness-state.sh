@@ -5,13 +5,78 @@ CLI="$ROOT/scripts/harness-state.py"
 fail() { echo "FAIL: $1"; exit 1; }
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/project/docs/plans"
+mkdir -p "$TMP/project/docs/plans" "$TMP/project/.harness"
 printf '# Plan: demo\n' > "$TMP/project/docs/plans/ACTIVE-PLAN.md"
+cat > "$TMP/project/.harness/plan.json" <<'JSON'
+{
+  "schema_version": 1,
+  "plan_id": "demo",
+  "original_scope": ["Exercise the state lifecycle"],
+  "approved_scope": ["Exercise task transition gates"],
+  "impact_analysis": {"forward": ["state CLI"], "risks": ["invalid transition"]},
+  "mode_options": {
+    "recommendation": "single-agent",
+    "options": ["single-agent", "mixed", "multi-agent"],
+    "estimates": {"single_agent": "25k-50k", "mixed": "45k-90k", "multi_agent": "80k-160k"}
+  },
+  "phases": [
+    {
+      "id": "1",
+      "title": "State engine",
+      "objectives": ["Complete task 1.1 with green reviews"],
+      "tasks": [
+        {
+          "id": "1.1",
+          "title": "Implement state engine",
+          "status": "pending",
+          "owner_role": "implementer",
+          "reviewer_roles": ["security", "regression", "tests"],
+          "dependencies": [],
+          "acceptance_criteria": ["State lifecycle remains valid"],
+          "test_obligations": ["Run state tests"],
+          "evidence": {}
+        }
+      ],
+      "validation": {
+        "security": {"status": "pending"},
+        "regression": {"status": "pending"},
+        "tests": {"status": "pending"},
+        "objectives": {"status": "pending"}
+      }
+    },
+    {
+      "id": "2",
+      "title": "Planning integration",
+      "objectives": ["Advance to task 2.1 only after dependency completion"],
+      "tasks": [
+        {
+          "id": "2.1",
+          "title": "Implement planning integration",
+          "status": "pending",
+          "owner_role": "implementer",
+          "reviewer_roles": ["security", "regression", "tests"],
+          "dependencies": ["1.1"],
+          "acceptance_criteria": ["Unknown task IDs fail closed"],
+          "test_obligations": ["Run state tests"],
+          "evidence": {}
+        }
+      ],
+      "validation": {
+        "security": {"status": "pending"},
+        "regression": {"status": "pending"},
+        "tests": {"status": "pending"},
+        "objectives": {"status": "pending"}
+      }
+    }
+  ],
+  "history": []
+}
+JSON
 cd "$TMP/project"
 
 python3 "$CLI" init \
   --plan-id demo \
-  --plan-file docs/plans/ACTIVE-PLAN.md \
+  --plan-file .harness/plan.json \
   --branch codex/test \
   --owner tester \
   --phase 1 \
@@ -72,7 +137,70 @@ python3 "$CLI" checkpoint \
   --result "red expected" \
   --next-action "implement atomic writes" >/dev/null \
   || fail "checkpoint debería funcionar"
+
+if python3 "$CLI" advance \
+  --plan-json .harness/plan.json \
+  --phase 2 \
+  --task missing-task \
+  --next-action "must fail" >/dev/null 2>&1; then
+  fail "advance debería rechazar un task ID desconocido"
+fi
+
+if python3 "$CLI" advance \
+  --plan-json .harness/plan.json \
+  --phase 2 \
+  --task 2.1 \
+  --next-action "must fail" >/dev/null 2>&1; then
+  fail "advance debería rechazar dependencias incompletas"
+fi
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".harness/plan.json")
+plan = json.loads(path.read_text(encoding="utf-8"))
+task = plan["phases"][0]["tasks"][0]
+task["status"] = "completed"
+task["evidence"] = {
+    "implementation_checkpoint": {"status": "green", "commit": "abc123"},
+    "regression": {"status": "green", "result": "ALL OK"},
+    "tests": {"status": "green", "result": "ALL OK"},
+}
+path.write_text(json.dumps(plan), encoding="utf-8")
+PY
+
+if python3 "$CLI" advance \
+  --plan-json .harness/plan.json \
+  --phase 2 \
+  --task 2.1 \
+  --next-action "must fail" >/dev/null 2>&1; then
+  fail "advance debería rechazar evidencia de revisión ausente"
+fi
+
+python3 "$CLI" show --json | python3 -c '
+import json, sys
+d=json.load(sys.stdin)
+assert d["phase"] == 1
+assert d["task"] == "1.1"
+assert d["status"] == "in_progress"
+' || fail "advance rechazado no debería mutar el estado"
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".harness/plan.json")
+plan = json.loads(path.read_text(encoding="utf-8"))
+plan["phases"][0]["tasks"][0]["evidence"]["security"] = {
+    "status": "green",
+    "result": "no findings",
+}
+path.write_text(json.dumps(plan), encoding="utf-8")
+PY
+
 python3 "$CLI" advance \
+  --plan-json .harness/plan.json \
   --phase 2 \
   --task 2.1 \
   --next-action "implement planning-director" >/dev/null \

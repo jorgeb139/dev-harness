@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ TRANSITIONS = {
     "blocked": {"in_progress"},
     "completed": set(),
 }
+SAFE_STATE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def now():
@@ -57,8 +59,15 @@ def validate_state(value):
         raise ValueError(f"unsupported state schema: {value['schema_version']}")
     if value["status"] not in STATUSES:
         raise ValueError(f"invalid status: {value['status']}")
-    if not isinstance(value["phase"], int) or value["phase"] < 1:
-        raise ValueError("phase must be a positive integer")
+    if type(value["phase"]) is int:
+        if value["phase"] < 1:
+            raise ValueError("phase must be a positive integer or stable phase ID")
+    elif (
+        not isinstance(value["phase"], str)
+        or not value["phase"].strip()
+        or not SAFE_STATE_ID.fullmatch(value["phase"])
+    ):
+        raise ValueError("phase must be a positive integer or stable phase ID")
     for field in ("plan_id", "plan_file", "task", "owner", "branch", "next_action"):
         if not isinstance(value[field], str) or not value[field].strip():
             raise ValueError(f"{field} must be a non-empty string")
@@ -133,7 +142,7 @@ def command_init(args):
             raise ValueError(f"state already exists: {state_path}")
         value = {
             "schema_version": SCHEMA_VERSION, "plan_id": args.plan_id,
-            "plan_file": args.plan_file, "status": "pending", "phase": args.phase,
+            "plan_file": args.plan_file, "status": "pending", "phase": _phase_value(args.phase),
             "task": args.task, "owner": args.owner, "branch": args.branch,
             "last_verified_commit": "", "next_action": args.next_action,
             "evidence": [], "blockers": [], "updated_at": now(), "history": [],
@@ -173,8 +182,12 @@ def command_advance(args):
             raise ValueError("advance requires in_progress state")
         if not value["evidence"]:
             raise ValueError("advance requires checkpoint evidence")
+        from harness_plan import load_plan
+
+        plan = load_plan(Path(args.plan_json))
+        validate_task_transition(value, plan, str(args.phase), args.task)
         previous = f"{value['phase']}.{value['task']}"
-        value["phase"] = args.phase
+        value["phase"] = _phase_value(args.phase)
         value["task"] = args.task
         value["next_action"] = args.next_action
         event(value, "advanced", f"from={previous} to={args.phase}.{args.task}")
@@ -233,6 +246,100 @@ def command_validate(args):
 def add_common(parser):
     parser.add_argument("--state-file", default="docs/plans/ACTIVE-PLAN.state.json")
     parser.add_argument("--handoff-file", default="docs/plans/ACTIVE-PLAN.HANDOFF.md")
+    parser.add_argument("--plan-json", default=".harness/plan.json")
+
+
+def _phase_value(value):
+    value = str(value)
+    if value.isdigit() and value == str(int(value)):
+        return int(value)
+    return value
+
+
+def _phase_for_task(plan, task_id):
+    for phase in plan["phases"]:
+        if any(task["id"] == task_id for task in phase["tasks"]):
+            return phase["id"]
+    raise ValueError(f"unknown current task ID: {task_id}")
+
+
+def _evidence_status(evidence):
+    if isinstance(evidence, str):
+        return evidence.casefold()
+    if isinstance(evidence, dict) and isinstance(evidence.get("status"), str):
+        return evidence["status"].casefold()
+    return None
+
+
+def _review_key(role):
+    normalized = role.casefold().replace("_", "-").replace(" ", "-")
+    if "security" in normalized:
+        return "security"
+    if "regression" in normalized:
+        return "regression"
+    if normalized.startswith("test"):
+        return "tests"
+    return role
+
+
+def _review_evidence(evidence, review):
+    if review == "tests":
+        return evidence.get("tests", evidence.get("test"))
+    return evidence.get(review)
+
+
+def validate_task_transition(value: dict, plan: dict, target_phase: str, target_task: str) -> None:
+    """Fail closed unless the plan permits advancing to the target task."""
+    from harness_plan import task_index, validate_plan
+
+    validate_state(value)
+    validate_plan(plan)
+    if value["plan_id"] != plan["plan_id"]:
+        raise ValueError("state plan_id does not match plan")
+    tasks = task_index(plan)
+    current_task_id = value["task"]
+    if current_task_id not in tasks:
+        raise ValueError(f"unknown current task ID: {current_task_id}")
+    if target_task not in tasks:
+        raise ValueError(f"unknown target task ID: {target_task}")
+    target_phase = str(target_phase)
+    actual_target_phase = _phase_for_task(plan, target_task)
+    if target_phase != actual_target_phase:
+        raise ValueError(
+            f"target task {target_task} belongs to phase {actual_target_phase}, not {target_phase}"
+        )
+    if target_task == current_task_id:
+        raise ValueError("advance target task must differ from the current task")
+    incomplete = [
+        dependency
+        for dependency in tasks[target_task]["dependencies"]
+        if tasks[dependency]["status"] != "completed"
+    ]
+    if incomplete:
+        raise ValueError(f"incomplete dependencies: {', '.join(incomplete)}")
+
+    current = tasks[current_task_id]
+    if current["status"] != "completed":
+        raise ValueError(f"current task {current_task_id} is not completed")
+    checkpoint = current["evidence"].get("implementation_checkpoint")
+    if not checkpoint:
+        raise ValueError("current task requires implementation checkpoint evidence")
+    if isinstance(checkpoint, dict):
+        checkpoint_status = _evidence_status(checkpoint)
+        if checkpoint_status not in {"complete", "completed", "green", "passed"}:
+            raise ValueError("implementation checkpoint evidence must be green")
+
+    required_reviews = list(("security", "regression", "tests"))
+    for role in current["reviewer_roles"]:
+        review_key = _review_key(role)
+        if review_key not in required_reviews:
+            required_reviews.append(review_key)
+    for review in required_reviews:
+        if _evidence_status(_review_evidence(current["evidence"], review)) not in {
+            "complete", "completed", "green", "passed",
+        }:
+            label = "test" if review == "tests" else review
+            raise ValueError(f"{label} review evidence must be green")
 
 
 def build_parser():
@@ -244,7 +351,7 @@ def build_parser():
     init.add_argument("--plan-file", required=True)
     init.add_argument("--branch", required=True)
     init.add_argument("--owner", required=True)
-    init.add_argument("--phase", required=True, type=int)
+    init.add_argument("--phase", required=True)
     init.add_argument("--task", required=True)
     init.add_argument("--next-action", required=True)
     init.set_defaults(handler=command_init)
@@ -262,7 +369,7 @@ def build_parser():
     checkpoint.set_defaults(handler=command_checkpoint)
     advance = sub.add_parser("advance")
     add_common(advance)
-    advance.add_argument("--phase", required=True, type=int)
+    advance.add_argument("--phase", required=True)
     advance.add_argument("--task", required=True)
     advance.add_argument("--next-action", required=True)
     advance.set_defaults(handler=command_advance)
