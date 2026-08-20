@@ -128,17 +128,18 @@ def mutate(args, operation):
 
 def command_init(args):
     state_path, handoff_path = paths(args)
-    if state_path.exists():
-        raise ValueError(f"state already exists: {state_path}")
-    value = {
-        "schema_version": SCHEMA_VERSION, "plan_id": args.plan_id,
-        "plan_file": args.plan_file, "status": "pending", "phase": args.phase,
-        "task": args.task, "owner": args.owner, "branch": args.branch,
-        "last_verified_commit": "", "next_action": args.next_action,
-        "evidence": [], "blockers": [], "updated_at": now(), "history": [],
-    }
-    event(value, "initialized", f"plan={args.plan_id}")
-    save_state(state_path, handoff_path, value)
+    with locked(state_path):
+        if state_path.exists():
+            raise ValueError(f"state already exists: {state_path}")
+        value = {
+            "schema_version": SCHEMA_VERSION, "plan_id": args.plan_id,
+            "plan_file": args.plan_file, "status": "pending", "phase": args.phase,
+            "task": args.task, "owner": args.owner, "branch": args.branch,
+            "last_verified_commit": "", "next_action": args.next_action,
+            "evidence": [], "blockers": [], "updated_at": now(), "history": [],
+        }
+        event(value, "initialized", f"plan={args.plan_id}")
+        save_state(state_path, handoff_path, value)
     print(f"state: pending task={value['task']}")
 
 

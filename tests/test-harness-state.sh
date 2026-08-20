@@ -19,6 +19,40 @@ python3 "$CLI" init \
   --next-action "write the first failing test" >/dev/null \
   || fail "init debería crear el estado"
 
+PYTHONPATH="$ROOT/scripts" python3 - "$TMP/project" <<'PY' \
+  || { echo "FAIL: init debería adquirir el lock compartido"; exit 1; }
+from contextlib import contextmanager
+from pathlib import Path
+import sys
+
+import harness_state
+
+root = Path(sys.argv[1])
+state = root / "contract.state.json"
+handoff = root / "contract.HANDOFF.md"
+locked_paths = []
+
+@contextmanager
+def recording_lock(path):
+    locked_paths.append(Path(path))
+    yield
+
+harness_state.locked = recording_lock
+assert harness_state.main([
+    "init",
+    "--state-file", str(state),
+    "--handoff-file", str(handoff),
+    "--plan-id", "contract",
+    "--plan-file", "docs/plans/ACTIVE-PLAN.md",
+    "--branch", "codex/test",
+    "--owner", "tester",
+    "--phase", "1",
+    "--task", "1.1",
+    "--next-action", "verify lock",
+]) == 0
+assert locked_paths == [state]
+PY
+
 python3 "$CLI" show --json | python3 -c '
 import json, sys
 d=json.load(sys.stdin)
