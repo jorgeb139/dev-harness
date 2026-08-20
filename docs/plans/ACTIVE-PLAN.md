@@ -3,7 +3,7 @@
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-20-project-memory-orchestration-design.md`
 - **Plan detallado:** `docs/superpowers/plans/2026-08-20-project-memory-orchestration.md`
-- **Tarea actual:** ► Etapa 1, tarea 1.1
+- **Tarea actual:** ► Etapa 1, tarea 1.2
 - **Rama base:** develop
 - **Rama de tarea:** codex/project-memory-orchestration
 - **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -29,7 +29,7 @@
 - [ ] Identidad y contexto deterministas, con mismatch fail-closed.
 
 **Tareas:**
-- [ ] 1.1 Extract shared storage primitives
+- [x] 1.1 Extract shared storage primitives — implementado y revisado; commits `5dfa9a2`, `cdba8ae`
 - [ ] 1.2 Add identity and deterministic project context
 
 **Validación de etapa:** pendiente; requiere seguridad, regresión, tests y handoff en verde.
