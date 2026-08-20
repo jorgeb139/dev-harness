@@ -32,6 +32,8 @@ Escribir en el plan:
 4. Supuestos y preguntas abiertas, cada uno con su evidencia o responsable.
 5. Alternativas consideradas y motivo de la decisión.
 6. Estrategia de tests y comandos reales descubiertos.
+7. Recomendación de modalidad y matriz de modelos por rol, incluyendo rango de tokens y
+   qué decisión queda en manos del usuario.
 
 ## Gate de confianza
 

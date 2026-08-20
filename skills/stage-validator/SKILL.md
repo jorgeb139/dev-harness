@@ -10,6 +10,11 @@ Invocar y correr los roles `security-review`, `regression-review`, `test-strateg
 "Validación de etapa" del plan. Si cualquiera falla: arreglar dentro de la etapa y repetir.
 PROHIBIDO iniciar la etapa siguiente con validación pendiente o en rojo.
 
+La revisión debe confirmar scope, modelo/rol ejecutado, loop de corrección y ausencia de
+requisitos inventados. La cobertura numérica mínima es 90% del código cambiado; 100% solo
+si el coste marginal es bajo. Integración y E2E son obligatorios cuando la arquitectura
+los hace aplicables, y su no aplicación debe quedar evidenciada.
+
 ## 1. Seguridad (`security-review`)
 
 Verificar branch governance antes del diff:

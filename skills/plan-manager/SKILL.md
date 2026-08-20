@@ -27,7 +27,8 @@ una hora de trabajo. Si no lo cumple: trabajar directo, sin plan.
 4. Presentar el plan al usuario y obtener aprobación ANTES de ejecutar.
 5. Al iniciar la ejecución: invocar la skill agent-orchestrator (clasifica complejidad,
    recomienda modalidad, presenta estimados de tokens y pide confirmación) — obligatorio,
-   no opcional. Registrar `T/F/S/R/D`, recomendación, decisión, motivo, estimados y modelos
+   no opcional. Registrar `T/F/S/R/D`, recomendación, decisión, motivo, estimados, modelos
+   por rol y la política de selección (automático, un modelo para todo o por agente)
    en `ACTIVE-PLAN.md` antes de ejecutar la primera tarea.
 6. Durante ejecución, tras terminar CADA tarea: marcar su checkbox, ejecutar `checkpoint` y
    `advance`, y mover el marcador

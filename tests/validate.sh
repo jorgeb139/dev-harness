@@ -28,7 +28,7 @@ ok "marketplace.json"
 ok "README.md"
 
 # --- Task 2: templates ---
-for t in AGENTS.md ARCHITECTURE.md MUST-DO.md PLAN-template.md HANDOFF-template.md CLAUDE.md health.sh; do
+for t in AGENTS.md ARCHITECTURE.md MUST-DO.md PLAN-template.md HANDOFF-template.md CLAUDE.md health.sh PROJECT-CONTEXT.md MEMORY-README.md COMPLETION-POLICY.md; do
   [ -f "$ROOT/templates/$t" ] || fail "falta templates/$t"
 done
 grep -q "Tarea actual" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin marcador de tarea actual"
@@ -42,6 +42,8 @@ grep -q "Estrategia de tests" "$ROOT/templates/PLAN-template.md" || fail "PLAN-t
 grep -q "Branch governance" "$ROOT/templates/MUST-DO.md" || fail "MUST-DO sin branch governance"
 grep -q "rollback" "$ROOT/templates/AGENTS.md" || fail "AGENTS sin compatibilidad segura"
 grep -q "Memoria del proyecto" "$ROOT/templates/AGENTS.md" || fail "AGENTS sin memoria persistente documentada"
+grep -q "modelos por rol" "$ROOT/templates/AGENTS.md" || fail "AGENTS sin selección de modelos"
+grep -q "COMPLETION-POLICY" "$ROOT/commands/init.md" || fail "init.md sin política de completitud"
 grep -q "Validación de etapa" "$ROOT/templates/PLAN-template.md" || fail "PLAN-template sin sección de validación"
 bash -n "$ROOT/templates/health.sh" || fail "templates/health.sh con error de sintaxis"
 ok "templates"
@@ -71,7 +73,7 @@ done
 ok "commands/init.md"
 
 # --- Task 6+7+8: skills ---
-for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective branch-governance destructive-changes planning-director security-review regression-review test-strategy checkpoint-handoff; do
+for s in plan-manager confidence-gate stage-validator agent-orchestrator retrospective branch-governance destructive-changes planning-director security-review regression-review test-strategy checkpoint-handoff project-context project-memory; do
   f="$ROOT/skills/$s/SKILL.md"
   [ -f "$f" ] || fail "falta skills/$s/SKILL.md"
   head -1 "$f" | grep -q -- "---" || fail "skills/$s sin frontmatter"
@@ -85,6 +87,7 @@ grep -q -i "token" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orc
 grep -q "Recomendación" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin recomendacion"
 grep -q "T/F/S/R/D" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin variables de complejidad"
 grep -q "modalidad mixta" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin modalidad mixta"
+grep -q "Selección de modelos" "$ROOT/skills/agent-orchestrator/SKILL.md" || fail "agent-orchestrator sin selección de modelos"
 grep -q -i "aprob" "$ROOT/skills/retrospective/SKILL.md" || fail "retrospective sin aprobación del usuario"
 grep -q "develop" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin develop"
 grep -q "main" "$ROOT/skills/branch-governance/SKILL.md" || fail "branch-governance sin main"
@@ -139,14 +142,15 @@ grep -q "timeout=60" "$ROOT/scripts/session-start.sh" || fail "session-start sin
 grep -q "recomendar modalidad" "$ROOT/scripts/session-start.sh" || fail "session-start sin recomendacion de modalidad"
 grep -q "planning-director" "$ROOT/scripts/session-start.sh" || fail "session-start sin planning-director"
 grep -q "checkpoint-handoff" "$ROOT/scripts/session-start.sh" || fail "session-start sin checkpoint-handoff"
+grep -q "PROJECT IDENTITY" "$ROOT/scripts/session-start.sh" || fail "session-start sin identidad"
 grep -q "timeout=60" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit sin timeout"
 grep -q "rama protegida" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit no bloquea ramas protegidas"
 grep -q "merge directo" "$ROOT/scripts/pre-commit-gate.sh" || fail "pre-commit no bloquea merge directo"
 [ -x "$ROOT/scripts/install-codex-skills.sh" ] || fail "install-codex-skills.sh no executable"
 bash -n "$ROOT/scripts/install-codex-skills.sh" || fail "install-codex-skills.sh con error de sintaxis"
 grep -q "~/.agents/skills/dev-harness" "$ROOT/README.md" || fail "README no documenta symlink Codex"
-grep -q '"version": "0.3.0"' "$ROOT/.claude-plugin/plugin.json" || fail "plugin Claude sin version 0.3.0"
-grep -q '"version": "0.3.0"' "$ROOT/.codex-plugin/plugin.json" || fail "plugin Codex sin version 0.3.0"
+grep -q '"version": "0.4.0"' "$ROOT/.claude-plugin/plugin.json" || fail "plugin Claude sin version 0.4.0"
+grep -q '"version": "0.4.0"' "$ROOT/.codex-plugin/plugin.json" || fail "plugin Codex sin version 0.4.0"
 ok "compatibilidad dual"
 
 echo "ALL OK"
