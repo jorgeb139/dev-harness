@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from harness_state import main
+from harness_plan import main
 
 
 if __name__ == "__main__":

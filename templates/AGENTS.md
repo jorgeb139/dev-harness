@@ -32,3 +32,23 @@ Antes de modificar código, lee `AGENTS.md`, `ARCHITECTURE.md`, `MUST-DO.md` y, 
 Registra decisiones estables en `ARCHITECTURE.md`, reglas aprobadas en `MUST-DO.md` y
 trabajo en curso en el plan. No trates el contexto de una sesión anterior como memoria
 confiable si no quedó escrito en esos archivos o en Git.
+
+La identidad y el contexto generado viven en `.harness/project-identity.json` y
+`PROJECT-CONTEXT.md`. La memoria aprendida vive en `.harness/memory/`; solo se carga
+después de validar que la identidad local coincide. El origen operativo del plan es
+`.harness/plan.json` y el estado recuperable es `.harness/execution-state.json`; el
+`ACTIVE-PLAN.md` es una proyección generada y no debe editarse directamente.
+
+## Orquestación y calidad
+
+El primer rol es el orquestador: inspecciona antes de actuar, alcanza al menos 95% de
+certeza con evidencia o preguntas, recorre dependencias hacia atrás y hacia adelante,
+evalúa happy paths y sad paths, y confirma el scope sin inventar requisitos. Presenta
+agente único, modalidad mixta y multi-agente con riesgos, operación y tokens estimados.
+También presenta modelos por rol y tokens por modelo: automático, un modelo elegido para
+todo, o una selección por agente. El usuario decide tanto la modalidad como los modelos.
+
+Cada tarea pasa por implementador y revisor de seguridad/regresión/tests. La tarea no se
+cierra hasta que el loop de corrección sea verde, con cobertura mínima de 90% del código
+modificado y 100% solo cuando el coste marginal sea bajo; integración y E2E se ejecutan
+cuando la arquitectura los haga aplicables.

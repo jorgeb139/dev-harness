@@ -38,8 +38,30 @@ except Exception as e:
 
 validate_execution_state() {
   [ -f ".harness/harness-state.py" ] || return 0
-  [ -f "docs/plans/ACTIVE-PLAN.state.json" ] || return 0
-  PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py validate
+  if [ -f ".harness/execution-state.json" ] || [ -f "docs/plans/ACTIVE-PLAN.state.json" ]; then
+    if [ -f ".harness/plan.json" ]; then
+      PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py validate --plan-json .harness/plan.json
+    else
+      PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py validate
+    fi
+  fi
+}
+
+validate_project_contract() {
+  if [ -f ".harness/harness-project.py" ] && [ -f ".harness/project-identity.json" ]; then
+    PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py identity check || return 1
+    PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-project.py context check || return 1
+  fi
+  if [ -f ".harness/harness-plan.py" ] && [ -f ".harness/plan.json" ]; then
+    PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-plan.py plan validate --plan-json .harness/plan.json || return 1
+    if [ -f "docs/plans/ACTIVE-PLAN.md" ]; then
+      local rendered
+      rendered="$(mktemp "${TMPDIR:-/tmp}/dev-harness-plan.XXXXXX")"
+      trap 'rm -f "$rendered"' RETURN
+      PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-plan.py plan render --plan-json .harness/plan.json --output "$rendered" || return 1
+      cmp -s "$rendered" docs/plans/ACTIVE-PLAN.md || return 1
+    fi
+  fi
 }
 
 current_branch() {
@@ -72,6 +94,13 @@ case "$cmd" in
         } >&2
         exit 2
       fi
+    fi
+    if ! contract_out="$(validate_project_contract 2>&1)"; then
+      {
+        echo "dev-harness bloqueó el commit: identidad, contexto, plan o proyección inválidos."
+        echo "$contract_out"
+      } >&2
+      exit 2
     fi
     if state_out="$(validate_execution_state 2>&1)"; then
       exit 0

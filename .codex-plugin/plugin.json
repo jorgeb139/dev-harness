@@ -1,6 +1,6 @@
 {
   "name": "dev-harness",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Harness de calidad para desarrollo agentico en Claude Code y Codex: planes por etapas, gates de confianza, validacion y retrospectiva.",
   "author": {
     "name": "Jorge",
