@@ -54,13 +54,18 @@ def _require_id(value: object, label: str) -> str:
 
 
 def _has_evidence(value: object) -> bool:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return False
     if isinstance(value, str):
         return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return bool(value)
-    return bool(value)
+    if isinstance(value, list):
+        return any(_has_evidence(item) for item in value)
+    if isinstance(value, dict):
+        return any(
+            key != "status" and _has_evidence(item)
+            for key, item in value.items()
+        )
+    return isinstance(value, (int, float))
 
 
 def _validate_string_list(value: object, label: str, *, allow_empty: bool) -> list[str]:
@@ -335,7 +340,10 @@ def task_index(plan: dict) -> dict[str, dict]:
 
 def _prose(value: object) -> str:
     text = " ".join(str(value).split())
-    return PROSE_SENSITIVE.sub(r"\\\1", text)
+    text = PROSE_SENSITIVE.sub(r"\\\1", text)
+    if re.fullmatch(r"-{3,}", text) or re.match(r"^-\s", text):
+        return "\\" + text
+    return re.sub(r"^(\d+)([.)])(\s)", r"\1\\\2\3", text)
 
 
 def _code_span(value: object) -> str:
@@ -404,6 +412,20 @@ def _phase_for_task(plan: dict, task_id: str) -> str:
     raise ValueError(f"unknown current task ID: {task_id}")
 
 
+def validate_state_mode_for_plan(plan: dict, state: dict) -> None:
+    mode = plan["mode_options"]
+    choice = mode.get("choice")
+    if state["selected_mode"] != choice:
+        raise ValueError("state selected_mode does not match plan mode choice")
+    expected_estimates = mode["estimates"] if choice is not None else {}
+    if state["token_estimates"] != expected_estimates:
+        raise ValueError("state token_estimates do not match the active plan decision")
+    if choice is not None:
+        decision = state["mode_decision"]
+        if set(decision["estimates"]) != set(mode["options"]):
+            raise ValueError("state mode decision does not cover the plan declared modes")
+
+
 def _current_pointer(plan: dict, state: dict | None) -> tuple[str, str]:
     tasks = task_index(plan)
     if state is not None:
@@ -412,6 +434,7 @@ def _current_pointer(plan: dict, state: dict | None) -> tuple[str, str]:
         validate_state(state)
         if state["plan_id"] != plan["plan_id"]:
             raise ValueError("state plan_id does not match plan")
+        validate_state_mode_for_plan(plan, state)
         task_id = state["task"]
         if task_id not in tasks:
             raise ValueError(f"unknown current task ID: {task_id}")
@@ -495,9 +518,14 @@ def render_markdown(plan: dict, state: dict | None) -> str:
                 "answered", "closed", "resolved",
             }
             lines.append(f"- [{'x' if resolved else ' '}] {_prose(question['text'])}")
-            for field, value in question.items():
-                if field != "text":
-                    lines.append(f"  - **{_prose(field.title())}:** {_prose(value)}")
+            for field in sorted(key for key in question if key != "text"):
+                value = question[field]
+                label = _prose(field.replace("_", " ").title())
+                if isinstance(value, (dict, list)):
+                    lines.append(f"  - **{label}:**")
+                    lines.extend(_render_value(value, "    "))
+                else:
+                    lines.append(f"  - **{label}:** {_prose(value)}")
     else:
         lines.append("- None recorded")
 
@@ -545,7 +573,8 @@ def render_markdown(plan: dict, state: dict | None) -> str:
                     f"{_prose(review)}: {_code_span(review_status)}"
                 )
         lines.extend(["", "#### Phase Validation", ""])
-        for gate, evidence in phase["validation"].items():
+        for gate in sorted(phase["validation"]):
+            evidence = phase["validation"][gate]
             gate_status = _status(evidence) or "missing"
             lines.append(
                 f"- [{'x' if gate_status in GREEN_STATUSES else ' '}] "
@@ -620,8 +649,9 @@ def _standard_state_candidates(root: Path, requested: Path | None) -> tuple[Path
 def record_mode_decision(plan_path: Path, state_path: Path, decision: dict) -> None:
     """Persist plan/state/projection as one recoverable mode-decision transaction."""
     from harness_state import (
-        locked_paths, publish_transaction, resolve_execution_state, resume_transaction,
-        transaction_manifest_path, validate_state, value_fingerprint,
+        handoff_markdown, load_state, locked_paths, publish_transaction,
+        resolve_execution_state, resume_transaction, transaction_lock_path, validate_state,
+        value_fingerprint,
     )
 
     plan_path = Path(plan_path).resolve()
@@ -635,16 +665,17 @@ def record_mode_decision(plan_path: Path, state_path: Path, decision: dict) -> N
     }
     candidates = _standard_state_candidates(root, state_path)
     active_markdown = root / "docs/plans/ACTIVE-PLAN.md"
+    active_handoff = root / "docs/plans/ACTIVE-PLAN.HANDOFF.md"
     lock_targets = list(candidates) + [
-        plan_path, active_markdown, transaction_manifest_path(root, transaction_id),
+        plan_path, active_markdown, active_handoff,
+        transaction_lock_path(root, transaction_id),
     ]
     with locked_paths(lock_targets):
         if resume_transaction(root, transaction_id, metadata):
             return
         resolution = resolve_execution_state(root, state_path)
         plan = load_plan(plan_path)
-        state = load_json(resolution.path)
-        validate_state(state)
+        state = load_state(resolution.path)
         if state["plan_id"] != plan["plan_id"]:
             raise ValueError("state plan_id does not match plan")
         normalized = _validate_mode_decision(plan, decision)
@@ -681,6 +712,7 @@ def record_mode_decision(plan_path: Path, state_path: Path, decision: dict) -> N
         writes[active_markdown] = (
             "text", render_markdown(updated_plan, updated_state),
         )
+        writes[active_handoff] = ("text", handoff_markdown(updated_state))
         publish_transaction(
             root, transaction_id, writes, metadata=metadata,
         )
@@ -727,10 +759,11 @@ def _validate_green_checkpoint(task: dict) -> None:
 
 
 def _ensure_complete_for_archive(plan: dict, state: dict) -> None:
-    from harness_state import validate_state
+    from harness_state import validate_green_review, validate_state
 
     validate_plan(plan)
     validate_state(state)
+    validate_state_mode_for_plan(plan, state)
     for phase in plan["phases"]:
         if phase.get("status") != "completed":
             raise ValueError(f"plan is incomplete; phase {phase['id']} is not completed")
@@ -763,12 +796,12 @@ def _ensure_complete_for_archive(plan: dict, state: dict) -> None:
                     reviews.append(review)
             for review in reviews:
                 review_value = _review_evidence(task["evidence"], review)
-                if _status(review_value) not in GREEN_STATUSES or not _has_evidence(
-                    review_value.get("result") if isinstance(review_value, dict) else None
-                ):
+                try:
+                    validate_green_review(review_value, review)
+                except ValueError as exc:
                     raise ValueError(
                         f"plan is incomplete; task {task['id']} {review} review evidence is not green"
-                    )
+                    ) from exc
     if state["plan_id"] != plan["plan_id"]:
         raise ValueError("state plan_id does not match plan")
     if state["status"] != "completed":
@@ -829,8 +862,8 @@ def _handoff_fingerprint(handoff: str) -> str:
 def archive_plan(root: Path, plan: dict, state: dict, handoff: str) -> Path:
     """Archive only exact locked active snapshots through a resumable transaction."""
     from harness_state import (
-        file_fingerprint, locked_paths, publish_transaction, resolve_execution_state,
-        resume_transaction, transaction_manifest_path, value_fingerprint,
+        file_fingerprint, handoff_markdown, load_state, locked_paths, publish_transaction,
+        resolve_execution_state, resume_transaction, transaction_lock_path, value_fingerprint,
     )
 
     root = Path(root).resolve()
@@ -843,6 +876,8 @@ def archive_plan(root: Path, plan: dict, state: dict, handoff: str) -> Path:
         "plan": value_fingerprint(plan),
         "state": value_fingerprint(state),
         "handoff": _handoff_fingerprint(handoff),
+        "plan_id": plan_id,
+        "archive_path": f"docs/plans/history/{plan_id}.md",
     }
     history_dir = root / "docs/plans/history"
     archive_path = history_dir / f"{plan_id}.md"
@@ -860,14 +895,14 @@ def archive_plan(root: Path, plan: dict, state: dict, handoff: str) -> Path:
     active_handoff = root / "docs/plans/ACTIVE-PLAN.HANDOFF.md"
     lock_targets = [
         active_plan_path, canonical_state, legacy_state, active_markdown, active_handoff,
-        *artifact_paths, transaction_manifest_path(root, transaction_id),
+        *artifact_paths, transaction_lock_path(root, transaction_id),
     ]
     with locked_paths(lock_targets):
         if resume_transaction(root, transaction_id, metadata):
             return archive_path
         resolution = resolve_execution_state(root, allow_pending=False)
         active_plan = load_plan(active_plan_path)
-        active_state = load_json(resolution.path)
+        active_state = load_state(resolution.path)
         if active_plan != plan:
             raise ValueError("stale archive caller: active plan snapshot changed")
         if active_state != state:
@@ -883,9 +918,12 @@ def archive_plan(root: Path, plan: dict, state: dict, handoff: str) -> Path:
             raise ValueError(f"refusing to archive sensitive plan content: {', '.join(sensitive)}")
 
         expected_markdown = render_markdown(active_plan, active_state)
+        expected_handoff = handoff_markdown(active_state)
+        if handoff != expected_handoff:
+            raise ValueError("archive handoff does not match the locked execution state")
         if active_markdown.exists() and active_markdown.read_text(encoding="utf-8") != expected_markdown:
             raise ValueError("active Markdown pointer ownership mismatch")
-        if active_handoff.exists() and active_handoff.read_text(encoding="utf-8") != handoff:
+        if active_handoff.exists() and active_handoff.read_text(encoding="utf-8") != expected_handoff:
             raise ValueError("active handoff pointer ownership mismatch")
         for path in artifact_paths:
             if path.exists():
@@ -937,12 +975,12 @@ def command_validate(args: argparse.Namespace) -> None:
 
 
 def command_render(args: argparse.Namespace) -> None:
-    from harness_state import resolve_execution_state
+    from harness_state import load_state, resolve_execution_state
 
     plan = load_plan(args.plan_json)
     root = _project_root_for_plan(args.plan_json)
     resolution = resolve_execution_state(root, args.state_json)
-    state = load_json(resolution.path)
+    state = load_state(resolution.path)
     atomic_write_text(args.output, render_markdown(plan, state))
     print(f"plan: rendered {args.output}")
 
@@ -981,13 +1019,50 @@ def command_mode(args: argparse.Namespace) -> None:
     print(f"plan: mode recorded choice={decision['choice']}")
 
 
+def _resume_pending_archive(root: Path) -> Path | None:
+    from harness_state import (
+        file_fingerprint, locked_paths, resume_transaction,
+        transaction_replay_lock_targets,
+    )
+
+    manifests = sorted((root / ".harness/transactions").glob("archive-*/manifest.json"))
+    if not manifests:
+        return None
+    if len(manifests) != 1:
+        raise ValueError("multiple pending archive transactions require manual recovery")
+    manifest_path = manifests[0]
+    transaction_id = manifest_path.parent.name
+    lock_targets, fingerprint, manifest = transaction_replay_lock_targets(root, transaction_id)
+    metadata = manifest["metadata"]
+    plan_id = metadata.get("plan_id")
+    if (
+        metadata.get("operation") != "archive"
+        or not isinstance(plan_id, str)
+        or not SAFE_ID.fullmatch(plan_id)
+        or transaction_id != f"archive-{plan_id}"
+    ):
+        raise ValueError("pending archive transaction metadata is invalid")
+    expected_archive = f"docs/plans/history/{plan_id}.md"
+    if metadata.get("archive_path") != expected_archive:
+        raise ValueError("pending archive transaction path metadata is invalid")
+    with locked_paths(lock_targets):
+        if file_fingerprint(manifest_path) != fingerprint:
+            raise ValueError("pending archive transaction changed during lock acquisition")
+        resume_transaction(root, transaction_id, metadata)
+    return root / expected_archive
+
+
 def command_archive(args: argparse.Namespace) -> None:
-    from harness_state import resolve_execution_state
+    from harness_state import load_state, resolve_execution_state
 
     root = args.root.resolve()
+    recovered = _resume_pending_archive(root)
+    if recovered is not None:
+        print(f"plan: archived {recovered}")
+        return
     plan = load_plan(args.plan_json)
     resolution = resolve_execution_state(root, args.state_json, allow_pending=True)
-    state = load_json(resolution.path)
+    state = load_state(resolution.path)
     try:
         handoff = args.handoff_file.read_text(encoding="utf-8")
     except FileNotFoundError as exc:

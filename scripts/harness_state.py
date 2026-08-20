@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import re
@@ -83,24 +84,22 @@ def resolve_execution_state(
         requested_path = _under_root(root, Path(requested))
         if requested_path not in {canonical, legacy}:
             if requested_path.exists():
-                validate_state(load_json(requested_path))
+                migrate_state(load_json(requested_path))
             return ExecutionStateResolution(requested_path, (requested_path,))
 
     canonical_exists = canonical.exists()
     legacy_exists = legacy.exists()
     if canonical_exists and legacy_exists:
-        canonical_value = load_json(canonical)
-        legacy_value = load_json(legacy)
-        validate_state(canonical_value)
-        validate_state(legacy_value)
+        canonical_value = migrate_state(load_json(canonical))
+        legacy_value = migrate_state(load_json(legacy))
         if canonical_value != legacy_value:
             raise ValueError("canonical and legacy execution states diverge")
         return ExecutionStateResolution(canonical, (canonical, legacy))
     if canonical_exists:
-        validate_state(load_json(canonical))
+        migrate_state(load_json(canonical))
         return ExecutionStateResolution(canonical, (canonical, legacy))
     if legacy_exists:
-        validate_state(load_json(legacy))
+        migrate_state(load_json(legacy))
         return ExecutionStateResolution(legacy, (canonical, legacy))
     if for_init:
         return ExecutionStateResolution(canonical, (canonical, legacy))
@@ -147,10 +146,37 @@ def _transaction_id(value: str) -> str:
     return value
 
 
+def _stable_internal_directory(root: Path, relative: Path, label: str) -> Path:
+    directory = root / relative
+    if directory.resolve() != directory:
+        raise ValueError(f"{label} path must remain inside the project without symlinks")
+    return directory
+
+
+def _transaction_directory(root: Path, transaction_id: str) -> Path:
+    transactions = _stable_internal_directory(
+        root, Path(".harness/transactions"), "transaction root"
+    )
+    directory = transactions / transaction_id
+    if directory.resolve() != directory:
+        raise ValueError("transaction directory path must not use symlinks")
+    return directory
+
+
 def transaction_manifest_path(root: Path, transaction_id: str) -> Path:
     root = _root_path(root)
     transaction_id = _transaction_id(transaction_id)
-    return root / ".harness/transactions" / transaction_id / "manifest.json"
+    return _transaction_directory(root, transaction_id) / "manifest.json"
+
+
+def transaction_lock_path(root: Path, transaction_id: str) -> Path:
+    """Return a stable lock target outside disposable transaction payload directories."""
+    root = _root_path(root)
+    transaction_id = _transaction_id(transaction_id)
+    locks = _stable_internal_directory(
+        root, Path(".harness/transaction-locks"), "transaction lock root"
+    )
+    return locks / transaction_id
 
 
 def _relative_path(root: Path, path: Path) -> str:
@@ -172,17 +198,60 @@ def _serialized_content(kind: str, value: object) -> str:
 def _clear_transaction_directory(directory: Path) -> None:
     if not directory.exists():
         return
-    for path in sorted(directory.iterdir(), key=lambda item: item.name, reverse=True):
-        if path.is_file():
+    entries = sorted(directory.iterdir(), key=lambda item: item.name)
+    unexpected = [path for path in entries if not path.is_file()]
+    if unexpected:
+        raise ValueError(f"unexpected transaction directory entry: {unexpected[0]}")
+    manifest_path = directory / "manifest.json"
+    for path in entries:
+        if path != manifest_path:
             path.unlink()
-        else:
-            raise ValueError(f"unexpected transaction directory entry: {path}")
-    directory.rmdir()
+    if manifest_path.exists():
+        manifest_path.unlink()
 
 
-def _validate_manifest(manifest: dict, transaction_id: str) -> None:
+def _resolved_manifest_path(
+    base: Path,
+    raw_path: object,
+    label: str,
+    *,
+    direct_child: bool = False,
+) -> Path:
+    if not isinstance(raw_path, str) or not raw_path:
+        raise ValueError(f"transaction {label} path is invalid")
+    relative = Path(raw_path)
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        raise ValueError(f"transaction {label} path must be traversal-free and relative")
+    base = base.resolve()
+    resolved = (base / relative).resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(f"transaction {label} path escapes its allowed root") from exc
+    if direct_child and (len(relative.parts) != 1 or resolved.parent != base):
+        raise ValueError(f"transaction {label} path must be a direct staged payload")
+    return resolved
+
+
+def _valid_fingerprint(value: object, *, optional: bool) -> bool:
+    if optional and value is None:
+        return True
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _validate_manifest(
+    root: Path,
+    directory: Path,
+    manifest: dict,
+    transaction_id: str,
+) -> tuple[list[tuple[dict, Path, Path]], list[tuple[dict, Path]]]:
     required = {"schema_version", "transaction_id", "metadata", "writes", "deletes"}
-    if not isinstance(manifest, dict) or required - set(manifest):
+    allowed = required | {"phase"}
+    if (
+        not isinstance(manifest, dict)
+        or required - set(manifest)
+        or set(manifest) - allowed
+    ):
         raise ValueError("transaction manifest is malformed")
     if manifest["schema_version"] != TRANSACTION_SCHEMA_VERSION:
         raise ValueError(f"unsupported transaction schema: {manifest['schema_version']}")
@@ -194,6 +263,12 @@ def _validate_manifest(manifest: dict, transaction_id: str) -> None:
         raise ValueError("transaction writes must be a non-empty array")
     if not isinstance(manifest["deletes"], list):
         raise ValueError("transaction deletes must be an array")
+    if manifest.get("phase", "prepared") not in {"prepared", "applied"}:
+        raise ValueError("transaction manifest phase is invalid")
+    resolved_writes: list[tuple[dict, Path, Path]] = []
+    resolved_deletes: list[tuple[dict, Path]] = []
+    destinations: set[Path] = set()
+    staged_paths: set[Path] = set()
     for entry in manifest["writes"]:
         if not isinstance(entry, dict) or set(entry) != {
             "destination", "staged", "kind", "before", "desired",
@@ -201,46 +276,65 @@ def _validate_manifest(manifest: dict, transaction_id: str) -> None:
             raise ValueError("transaction write entry is malformed")
         if entry["kind"] not in {"json", "text"}:
             raise ValueError("transaction write kind is invalid")
-        for field in ("destination", "staged", "desired"):
-            if not isinstance(entry[field], str) or not entry[field]:
-                raise ValueError(f"transaction write {field} is invalid")
-        if entry["before"] is not None and not isinstance(entry["before"], str):
+        destination = _resolved_manifest_path(root, entry["destination"], "destination")
+        staged = _resolved_manifest_path(
+            directory, entry["staged"], "staged", direct_child=True
+        )
+        if destination in destinations:
+            raise ValueError("transaction destinations must be unique")
+        if staged in staged_paths:
+            raise ValueError("transaction staged paths must be unique")
+        destinations.add(destination)
+        staged_paths.add(staged)
+        if not _valid_fingerprint(entry["desired"], optional=False):
+            raise ValueError("transaction write desired fingerprint is invalid")
+        if not _valid_fingerprint(entry["before"], optional=True):
             raise ValueError("transaction write before fingerprint is invalid")
+        resolved_writes.append((entry, destination, staged))
     for entry in manifest["deletes"]:
         if not isinstance(entry, dict) or set(entry) != {"destination", "before"}:
             raise ValueError("transaction delete entry is malformed")
-        if not isinstance(entry["destination"], str) or not entry["destination"]:
-            raise ValueError("transaction delete destination is invalid")
-        if not isinstance(entry["before"], str) or not entry["before"]:
+        destination = _resolved_manifest_path(
+            root, entry["destination"], "delete destination"
+        )
+        if destination in destinations:
+            raise ValueError("transaction cannot write and delete the same destination")
+        destinations.add(destination)
+        if not _valid_fingerprint(entry["before"], optional=False):
             raise ValueError("transaction delete fingerprint is invalid")
+        resolved_deletes.append((entry, destination))
+    return resolved_writes, resolved_deletes
 
 
 def _apply_transaction(root: Path, directory: Path, manifest: dict) -> None:
-    for entry in manifest["writes"]:
-        destination = root / entry["destination"]
-        staged = directory / entry["staged"]
-        if file_fingerprint(staged) != entry["desired"]:
-            raise ValueError(f"transaction staged payload is corrupt: {staged}")
-        current = file_fingerprint(destination)
-        if current == entry["desired"]:
-            continue
-        if current != entry["before"]:
-            raise ValueError(f"transaction destination changed: {destination}")
-        content = staged.read_text(encoding="utf-8")
-        if entry["kind"] == "json":
-            atomic_write_json(destination, json.loads(content))
-        else:
-            atomic_write_text(destination, content)
-        if file_fingerprint(destination) != entry["desired"]:
-            raise OSError(f"transaction publish verification failed: {destination}")
+    transaction_id = manifest["transaction_id"]
+    resolved_writes, resolved_deletes = _validate_manifest(
+        root, directory, manifest, transaction_id
+    )
+    phase = manifest.get("phase", "prepared")
+    if phase == "prepared":
+        for entry, _, staged in resolved_writes:
+            if file_fingerprint(staged) != entry["desired"]:
+                raise ValueError(f"transaction staged payload is corrupt: {staged}")
+        for entry, destination, staged in resolved_writes:
+            current = file_fingerprint(destination)
+            if current == entry["desired"]:
+                continue
+            if current != entry["before"]:
+                raise ValueError(f"transaction destination changed: {destination}")
+            content = staged.read_text(encoding="utf-8")
+            if entry["kind"] == "json":
+                atomic_write_json(destination, json.loads(content))
+            else:
+                atomic_write_text(destination, content)
+            if file_fingerprint(destination) != entry["desired"]:
+                raise OSError(f"transaction publish verification failed: {destination}")
 
-    for entry in manifest["writes"]:
-        destination = root / entry["destination"]
+    for entry, destination, _ in resolved_writes:
         if file_fingerprint(destination) != entry["desired"]:
             raise OSError(f"transaction write set is incomplete: {destination}")
 
-    for entry in manifest["deletes"]:
-        destination = root / entry["destination"]
+    for entry, destination in resolved_deletes:
         current = file_fingerprint(destination)
         if current is None:
             continue
@@ -248,6 +342,9 @@ def _apply_transaction(root: Path, directory: Path, manifest: dict) -> None:
             raise ValueError(f"transaction delete target changed: {destination}")
         destination.unlink()
 
+    if phase != "applied":
+        manifest["phase"] = "applied"
+        atomic_write_json(directory / "manifest.json", manifest)
     _clear_transaction_directory(directory)
 
 
@@ -265,11 +362,30 @@ def resume_transaction(
             _clear_transaction_directory(directory)
         return False
     manifest = load_json(manifest_path)
-    _validate_manifest(manifest, transaction_id)
+    _validate_manifest(root, directory, manifest, transaction_id)
     if expected_metadata is not None and manifest["metadata"] != expected_metadata:
         raise ValueError("pending transaction metadata does not match requested operation")
     _apply_transaction(root, directory, manifest)
     return True
+
+
+def transaction_replay_lock_targets(
+    root: Path,
+    transaction_id: str,
+) -> tuple[tuple[Path, ...], str, dict]:
+    """Validate a pending manifest and return its complete lock set and fingerprint."""
+    root = _root_path(root)
+    manifest_path = transaction_manifest_path(root, transaction_id)
+    directory = manifest_path.parent
+    manifest = load_json(manifest_path)
+    writes, deletes = _validate_manifest(root, directory, manifest, transaction_id)
+    fingerprint = file_fingerprint(manifest_path)
+    if fingerprint is None:
+        raise ValueError("transaction manifest disappeared during recovery")
+    destinations = [destination for _, destination, _ in writes]
+    destinations.extend(destination for _, destination in deletes)
+    destinations.append(transaction_lock_path(root, transaction_id))
+    return tuple(destinations), fingerprint, manifest
 
 
 def publish_transaction(
@@ -291,7 +407,7 @@ def publish_transaction(
         raise ValueError(f"pending transaction must be resumed first: {manifest_path}")
     if directory.exists():
         _clear_transaction_directory(directory)
-    directory.mkdir(parents=True, exist_ok=False)
+    directory.mkdir(parents=True, exist_ok=True)
     write_entries = []
     write_destinations = set()
     try:
@@ -326,6 +442,7 @@ def publish_transaction(
         manifest = {
             "schema_version": TRANSACTION_SCHEMA_VERSION,
             "transaction_id": transaction_id,
+            "phase": "prepared",
             "metadata": metadata or {},
             "writes": write_entries,
             "deletes": delete_entries,
@@ -338,6 +455,69 @@ def publish_transaction(
     _apply_transaction(root, directory, manifest)
 
 
+def _checkpoint_from_evidence(value: dict) -> dict | None:
+    for item in reversed(value.get("evidence", [])):
+        if not isinstance(item, dict):
+            continue
+        required = {"timestamp", "commit", "test_command", "result"}
+        if required <= set(item):
+            return {field: copy.deepcopy(item[field]) for field in required}
+    return None
+
+
+def migrate_state(value: dict) -> dict:
+    """Return a validated schema-v2 state, deterministically upgrading schema v1."""
+    if not isinstance(value, dict):
+        raise ValueError("state must be a JSON object")
+    schema_version = value.get("schema_version")
+    if schema_version == SCHEMA_VERSION:
+        migrated = copy.deepcopy(value)
+        if "mode_decision" not in migrated:
+            selected = migrated.get("selected_mode")
+            estimates = migrated.get("token_estimates", {})
+            migrated["mode_decision"] = (
+                {
+                    "recommendation": selected,
+                    "choice": selected,
+                    "estimates": copy.deepcopy(estimates),
+                }
+                if selected is not None
+                else None
+            )
+        validate_state(migrated)
+        return migrated
+    if schema_version != 1:
+        raise ValueError(f"unsupported state schema: {schema_version}")
+    migrated = copy.deepcopy(value)
+    migrated["schema_version"] = SCHEMA_VERSION
+    migrated.setdefault(
+        "last_completed_task",
+        migrated.get("task") if migrated.get("status") == "completed" else None,
+    )
+    migrated.setdefault("attempt_count", 0)
+    migrated.setdefault("attempt_metadata", [])
+    decision = migrated.get("mode_decision")
+    if decision is None:
+        selected = migrated.get("selected_mode")
+        estimates = migrated.get("token_estimates", {})
+        if selected is not None:
+            decision = {
+                "recommendation": selected,
+                "choice": selected,
+                "estimates": copy.deepcopy(estimates),
+            }
+    migrated["mode_decision"] = copy.deepcopy(decision)
+    if isinstance(decision, dict):
+        migrated.setdefault("selected_mode", decision.get("choice"))
+        migrated.setdefault("token_estimates", copy.deepcopy(decision.get("estimates", {})))
+    else:
+        migrated.setdefault("selected_mode", None)
+        migrated.setdefault("token_estimates", {})
+    migrated.setdefault("checkpoint_metadata", _checkpoint_from_evidence(migrated))
+    validate_state(migrated)
+    return migrated
+
+
 def load_state(state_path: Path) -> dict:
     state_path = Path(state_path)
     try:
@@ -348,8 +528,7 @@ def load_state(state_path: Path) -> dict:
         if str(exc).startswith("malformed JSON:"):
             raise ValueError(f"malformed state JSON: {state_path}") from exc
         raise
-    validate_state(value)
-    return value
+    return migrate_state(value)
 
 
 def _validate_checkpoint_metadata(value: object, label: str) -> None:
@@ -366,15 +545,76 @@ def _validate_checkpoint_metadata(value: object, label: str) -> None:
             raise ValueError(f"{label}.{field} must be a non-empty string")
 
 
+def has_substantive_evidence(value: object) -> bool:
+    """Return true only when evidence contains a substantive non-status leaf."""
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return any(
+            key != "status" and has_substantive_evidence(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(has_substantive_evidence(item) for item in value)
+    return isinstance(value, (int, float))
+
+
+def validate_green_review(value: object, label: str) -> None:
+    """Require typed green review evidence with a substantive result or evidence field."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} review evidence must be an object")
+    status = value.get("status")
+    if not isinstance(status, str) or status.casefold() not in GREEN_STATUSES:
+        raise ValueError(f"{label} review evidence must be green")
+    if not any(
+        field in value and has_substantive_evidence(value[field])
+        for field in ("result", "evidence")
+    ):
+        raise ValueError(f"{label} review evidence requires a non-empty result or evidence")
+
+
+def _validate_mode_state(value: dict) -> None:
+    selected = value["selected_mode"]
+    estimates = value["token_estimates"]
+    decision = value["mode_decision"]
+    if selected is None:
+        if estimates or decision is not None:
+            raise ValueError("pre-decision state requires null mode_decision and empty estimates")
+        return
+    if not isinstance(decision, dict):
+        raise ValueError("selected mode requires a typed mode_decision")
+    required = {"recommendation", "choice", "estimates"}
+    missing = sorted(required - set(decision))
+    if missing:
+        raise ValueError(f"mode_decision missing fields: {', '.join(missing)}")
+    recommendation = decision["recommendation"]
+    choice = decision["choice"]
+    decision_estimates = decision["estimates"]
+    if not isinstance(recommendation, str) or not recommendation.strip():
+        raise ValueError("mode_decision recommendation must be non-empty")
+    if not isinstance(choice, str) or not choice.strip():
+        raise ValueError("mode_decision choice must be non-empty")
+    if not isinstance(decision_estimates, dict) or not decision_estimates:
+        raise ValueError("mode_decision estimates must be non-empty")
+    if selected != choice:
+        raise ValueError("selected_mode must match mode_decision choice")
+    if estimates != decision_estimates:
+        raise ValueError("token_estimates must match mode_decision estimates")
+    if selected not in estimates or recommendation not in estimates:
+        raise ValueError("mode decision must use a declared estimated mode")
+
+
 def validate_state(value: dict) -> None:
     if not isinstance(value, dict):
         raise ValueError("state must be a JSON object")
     required = {
         "schema_version", "plan_id", "plan_file", "status", "phase", "task",
         "owner", "branch", "last_verified_commit", "last_completed_task",
-        "attempt_count", "attempt_metadata", "selected_mode", "token_estimates",
-        "checkpoint_metadata", "next_action", "evidence", "blockers", "updated_at",
-        "history",
+        "attempt_count", "attempt_metadata", "mode_decision", "selected_mode",
+        "token_estimates", "checkpoint_metadata", "next_action", "evidence", "blockers",
+        "updated_at", "history",
     }
     missing = sorted(required - set(value))
     if missing:
@@ -432,10 +672,7 @@ def validate_state(value: dict) -> None:
             raise ValueError("token_estimates keys must be non-empty strings")
         if not isinstance(estimate, str) or not estimate.strip():
             raise ValueError(f"token_estimates.{mode} must be a non-empty string")
-    if value["selected_mode"] is None and value["token_estimates"]:
-        raise ValueError("pre-decision state must use empty token_estimates")
-    if value["selected_mode"] is not None and not value["token_estimates"]:
-        raise ValueError("selected mode requires token estimates")
+    _validate_mode_state(value)
     _validate_checkpoint_metadata(value["checkpoint_metadata"], "checkpoint_metadata")
     if not isinstance(value["evidence"], list) or not isinstance(value["blockers"], list):
         raise ValueError("evidence and blockers must be arrays")
@@ -460,7 +697,10 @@ def _code_span(value: object) -> str:
 
 def _prose(value: object) -> str:
     text = " ".join(str(value).split())
-    return re.sub(r"([\\`*_{}\[\]<>#+|])", r"\\\1", text)
+    text = re.sub(r"([\\`*_{}\[\]<>#+|])", r"\\\1", text)
+    if re.fullmatch(r"-{3,}", text) or re.match(r"^-\s", text):
+        return "\\" + text
+    return re.sub(r"^(\d+)([.)])(\s)", r"\1\\\2\3", text)
 
 
 def handoff_markdown(value: dict) -> str:
@@ -578,12 +818,13 @@ def validate_task_transition(
     target_task: str,
 ) -> None:
     """Fail closed unless current and target pointers satisfy every task gate."""
-    from harness_plan import task_index, validate_plan
+    from harness_plan import task_index, validate_plan, validate_state_mode_for_plan
 
     validate_state(value)
     validate_plan(plan)
     if value["plan_id"] != plan["plan_id"]:
         raise ValueError("state plan_id does not match plan")
+    validate_state_mode_for_plan(plan, value)
     tasks = task_index(plan)
     current_task_id = value["task"]
     if current_task_id not in tasks:
@@ -622,9 +863,8 @@ def validate_task_transition(
         if review_key not in required_reviews:
             required_reviews.append(review_key)
     for review in required_reviews:
-        if _evidence_status(_review_evidence(current["evidence"], review)) not in GREEN_STATUSES:
-            label = "test" if review == "tests" else review
-            raise ValueError(f"{label} review evidence must be green")
+        label = "test" if review == "tests" else review
+        validate_green_review(_review_evidence(current["evidence"], review), label)
 
 
 def _path_from_arg(root: Path, value: str | Path) -> Path:
@@ -697,7 +937,7 @@ def mutate(args: argparse.Namespace, operation) -> None:
         handoff_path,
         _path_from_arg(root, args.plan_json),
         root / ACTIVE_MARKDOWN_RELATIVE,
-        transaction_manifest_path(root, transaction_id),
+        transaction_lock_path(root, transaction_id),
     ]
     with locked_paths(lock_targets):
         resume_transaction(root, transaction_id)
@@ -721,7 +961,7 @@ def command_init(args: argparse.Namespace) -> None:
         handoff_path,
         _path_from_arg(root, args.plan_json),
         root / ACTIVE_MARKDOWN_RELATIVE,
-        transaction_manifest_path(root, transaction_id),
+        transaction_lock_path(root, transaction_id),
     ]
     with locked_paths(lock_targets):
         resume_transaction(root, transaction_id)
@@ -743,6 +983,7 @@ def command_init(args: argparse.Namespace) -> None:
             "last_completed_task": None,
             "attempt_count": 0,
             "attempt_metadata": [],
+            "mode_decision": None,
             "selected_mode": None,
             "token_estimates": {},
             "checkpoint_metadata": None,
@@ -850,6 +1091,7 @@ def command_complete(args: argparse.Namespace) -> None:
             "result": args.result,
         }
         value["last_verified_commit"] = args.commit
+        value["last_completed_task"] = value["task"]
         value["checkpoint_metadata"] = dict(checkpoint)
         value["next_action"] = "plan complete"
         value["evidence"].append(dict(checkpoint))
@@ -865,7 +1107,7 @@ def _read_resolution(args: argparse.Namespace) -> tuple[ExecutionStateResolution
     requested = Path(args.state_file) if args.state_file else None
     candidates = _candidate_state_paths(root, requested)
     transaction_id = _state_transaction_id(root, requested)
-    with locked_paths(list(candidates) + [transaction_manifest_path(root, transaction_id)]):
+    with locked_paths(list(candidates) + [transaction_lock_path(root, transaction_id)]):
         if resume_transaction(root, transaction_id):
             pass
         resolution = resolve_execution_state(root, requested)

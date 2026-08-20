@@ -161,6 +161,7 @@ cat > "$STATE" <<'JSON'
   "last_completed_task": null,
   "attempt_count": 0,
   "attempt_metadata": [],
+  "mode_decision": null,
   "selected_mode": null,
   "token_estimates": {},
   "checkpoint_metadata": null,
@@ -215,7 +216,10 @@ fi
 
 if ! PYTHONPATH="$ROOT/scripts" python3 - "$PROJECT" <<'PY'
 import copy
+import contextlib
+import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -229,7 +233,7 @@ from harness_plan import (
     task_index,
     validate_plan,
 )
-from harness_state import validate_state, validate_task_transition
+from harness_state import handoff_markdown, validate_state, validate_task_transition
 
 root = Path(sys.argv[1])
 plan_path = root / ".harness/plan.json"
@@ -297,10 +301,26 @@ assert "review queued" in rendered
 assert "Owner role: ``owner`role``" in rendered
 assert "``printf '`state`' && bash tests/test-harness-state.sh``" in rendered
 
+sorted_round_trip = json.loads(json.dumps(plan, sort_keys=True))
+sorted_state_round_trip = json.loads(json.dumps(state, sort_keys=True))
+assert render_markdown(sorted_round_trip, sorted_state_round_trip) == rendered
+
+for marker, escaped in (
+    ("---", "\\---"),
+    ("- item", "\\- item"),
+    ("1. item", "1\\. item"),
+):
+    marker_plan = copy.deepcopy(plan)
+    marker_plan["mode_options"]["rationale"] = marker
+    marker_rendered = render_markdown(marker_plan, state)
+    assert f"\n{escaped}\n" in marker_rendered
+    assert f"\n{marker}\n" not in marker_rendered
+
 for recovery_field in (
     "last_completed_task",
     "attempt_count",
     "attempt_metadata",
+    "mode_decision",
     "selected_mode",
     "token_estimates",
     "checkpoint_metadata",
@@ -395,6 +415,9 @@ assert persisted_plan["mode_options"]["estimates"] == decision["estimates"]
 assert persisted_state["selected_mode"] == "mixed"
 assert persisted_state["token_estimates"] == decision["estimates"]
 assert persisted_state["mode_decision"]["recommendation"] == "multi-agent"
+assert (root / "docs/plans/ACTIVE-PLAN.HANDOFF.md").read_text(
+    encoding="utf-8"
+) == handoff_markdown(persisted_state)
 
 try:
     archive_plan(root, persisted_plan, persisted_state, "handoff facts only")
@@ -444,6 +467,9 @@ state_path.write_text(json.dumps(complete_state), encoding="utf-8")
 (root / "docs/plans/ACTIVE-PLAN.md").write_text(
     render_markdown(complete_plan, complete_state), encoding="utf-8"
 )
+(root / "docs/plans/ACTIVE-PLAN.HANDOFF.md").write_text(
+    handoff_markdown(complete_state), encoding="utf-8"
+)
 
 history_path = archive_plan(
     root,
@@ -467,7 +493,7 @@ archived_state = json.loads(
 assert archived_state["last_verified_commit"] == "def456"
 
 
-def active_snapshots(probe_root, probe_plan, probe_state, handoff="handoff facts only"):
+def active_snapshots(probe_root, probe_plan, probe_state, handoff=None):
     (probe_root / ".harness").mkdir(parents=True, exist_ok=True)
     (probe_root / "docs/plans").mkdir(parents=True, exist_ok=True)
     plan_text = json.dumps(probe_plan, indent=2, sort_keys=True) + "\n"
@@ -480,8 +506,9 @@ def active_snapshots(probe_root, probe_plan, probe_state, handoff="handoff facts
     (probe_root / "docs/plans/ACTIVE-PLAN.md").write_text(
         render_markdown(probe_plan, probe_state), encoding="utf-8"
     )
+    handoff_text = handoff_markdown(probe_state) if handoff is None else handoff
     (probe_root / "docs/plans/ACTIVE-PLAN.HANDOFF.md").write_text(
-        handoff, encoding="utf-8"
+        handoff_text, encoding="utf-8"
     )
 
 
@@ -513,13 +540,50 @@ for label, mutate in (
             {"status": "pending", "evidence": None}
         ),
     ),
+    (
+        "null-only-objective",
+        lambda value: value["phases"][0]["objectives"][0].update(
+            {"evidence": {"placeholder": None}}
+        ),
+    ),
+    (
+        "null-only-criterion",
+        lambda value: value["phases"][0]["tasks"][0]["acceptance_criteria"][0].update(
+            {"evidence": [None, {"placeholder": False}]}
+        ),
+    ),
+    (
+        "null-only-obligation",
+        lambda value: value["phases"][0]["tasks"][0]["test_obligations"][0].update(
+            {"evidence": {"nested": [None, False, ""]}}
+        ),
+    ),
 ):
     probe_plan, probe_state = completed_probe(label)
     mutate(probe_plan)
     probe_root = root.parent / label
-    active_snapshots(probe_root, probe_plan, probe_state)
+    if label.startswith("null-only-"):
+        (probe_root / ".harness").mkdir(parents=True, exist_ok=True)
+        (probe_root / "docs/plans").mkdir(parents=True, exist_ok=True)
+        plan_text = json.dumps(probe_plan, indent=2, sort_keys=True) + "\n"
+        state_text = json.dumps(probe_state, indent=2, sort_keys=True) + "\n"
+        (probe_root / ".harness/plan.json").write_text(plan_text, encoding="utf-8")
+        (probe_root / ".harness/execution-state.json").write_text(
+            state_text, encoding="utf-8"
+        )
+        (probe_root / "docs/plans/ACTIVE-PLAN.state.json").write_text(
+            state_text, encoding="utf-8"
+        )
+        (probe_root / "docs/plans/ACTIVE-PLAN.md").write_text(
+            "invalid evidence must not archive\n", encoding="utf-8"
+        )
+        (probe_root / "docs/plans/ACTIVE-PLAN.HANDOFF.md").write_text(
+            handoff_markdown(probe_state), encoding="utf-8"
+        )
+    else:
+        active_snapshots(probe_root, probe_plan, probe_state)
     try:
-        archive_plan(probe_root, probe_plan, probe_state, "handoff facts only")
+        archive_plan(probe_root, probe_plan, probe_state, handoff_markdown(probe_state))
     except ValueError as exc:
         assert "incomplete" in str(exc) or "evidence" in str(exc)
     else:
@@ -538,7 +602,7 @@ for probe_id, sensitive_impact in sensitive_cases.items():
     probe_root = root.parent / probe_id
     active_snapshots(probe_root, probe_plan, probe_state)
     try:
-        archive_plan(probe_root, probe_plan, probe_state, "handoff facts only")
+        archive_plan(probe_root, probe_plan, probe_state, handoff_markdown(probe_state))
     except ValueError as exc:
         assert "sensitive" in str(exc)
     else:
@@ -562,8 +626,8 @@ safe_plan["impact_analysis"] = {
     "url": "https://example.test/repo",
 }
 safe_root = root.parent / "safe-boundaries"
-active_snapshots(safe_root, safe_plan, safe_state, "safe handoff facts")
-safe_archive = archive_plan(safe_root, safe_plan, safe_state, "safe handoff facts")
+active_snapshots(safe_root, safe_plan, safe_state)
+safe_archive = archive_plan(safe_root, safe_plan, safe_state, handoff_markdown(safe_state))
 assert safe_archive.is_file()
 
 blocked_plan, blocked_state = completed_probe("blocked-state")
@@ -653,7 +717,7 @@ active_snapshots(markdown_root, pointer_plan, pointer_state)
     render_markdown(other_plan, other_state), encoding="utf-8"
 )
 try:
-    archive_plan(markdown_root, pointer_plan, pointer_state, "handoff facts only")
+    archive_plan(markdown_root, pointer_plan, pointer_state, handoff_markdown(pointer_state))
 except ValueError as exc:
     assert "pointer" in str(exc) or "ownership" in str(exc)
 else:
@@ -679,7 +743,7 @@ mode_plan["mode_options"]["choice"] = None
 mode_state = copy.deepcopy(state)
 mode_state["selected_mode"] = None
 mode_state["token_estimates"] = {}
-mode_state.pop("mode_decision", None)
+mode_state["mode_decision"] = None
 mode_root = root.parent / "mode-recovery"
 active_snapshots(mode_root, mode_plan, mode_state)
 mode_plan_path = mode_root / ".harness/plan.json"
@@ -717,6 +781,9 @@ assert json.loads(
 assert "**User choice:** mixed" in (
     mode_root / "docs/plans/ACTIVE-PLAN.md"
 ).read_text(encoding="utf-8")
+assert (mode_root / "docs/plans/ACTIVE-PLAN.HANDOFF.md").read_text(
+    encoding="utf-8"
+) == handoff_markdown(recovered_mode_state)
 
 partial_plan, partial_state = completed_probe("partial-archive")
 partial_root = root.parent / "partial-archive"
@@ -737,7 +804,7 @@ def fail_archive_state_once(path, value):
 
 harness_state.atomic_write_json = fail_archive_state_once
 try:
-    archive_plan(partial_root, partial_plan, partial_state, "handoff facts only")
+    archive_plan(partial_root, partial_plan, partial_state, handoff_markdown(partial_state))
 except OSError as exc:
     assert "injected archive" in str(exc)
 else:
@@ -747,11 +814,54 @@ finally:
 assert list((partial_root / ".harness/transactions").glob("*/manifest.json"))
 assert (partial_root / ".harness/plan.json").is_file()
 recovered_archive = archive_plan(
-    partial_root, partial_plan, partial_state, "handoff facts only"
+    partial_root, partial_plan, partial_state, handoff_markdown(partial_state)
 )
 assert recovered_archive.is_file()
 assert partial_state_archive.is_file()
 assert not (partial_root / ".harness/plan.json").exists()
+
+cleanup_plan, cleanup_state = completed_probe("post-delete-retry")
+cleanup_root = root.parent / "post-delete-retry"
+active_snapshots(cleanup_root, cleanup_plan, cleanup_state)
+cleanup_archive = cleanup_root / "docs/plans/history/post-delete-retry.md"
+original_clear_transaction = harness_state._clear_transaction_directory
+cleanup_failed = False
+
+
+def fail_cleanup_after_delete_once(directory):
+    global cleanup_failed
+    if (
+        Path(directory).name == "archive-post-delete-retry"
+        and not (cleanup_root / ".harness/plan.json").exists()
+        and not cleanup_failed
+    ):
+        cleanup_failed = True
+        raise OSError("injected post-delete cleanup failure")
+    return original_clear_transaction(directory)
+
+
+previous_cwd = Path.cwd()
+os.chdir(cleanup_root)
+harness_state._clear_transaction_directory = fail_cleanup_after_delete_once
+try:
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        first_rc = harness_plan.main(["plan", "archive"])
+finally:
+    harness_state._clear_transaction_directory = original_clear_transaction
+assert first_rc == 1
+assert cleanup_archive.is_file()
+assert not (cleanup_root / ".harness/plan.json").exists()
+assert (
+    cleanup_root / ".harness/transactions/archive-post-delete-retry/manifest.json"
+).is_file()
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    retry_rc = harness_plan.main(["plan", "archive"])
+os.chdir(previous_cwd)
+assert retry_rc == 0
+assert cleanup_archive.is_file()
+assert not (
+    cleanup_root / ".harness/transactions/archive-post-delete-retry/manifest.json"
+).exists()
 PY
 then
   fail "plan schema, projection, gates, mode, and archive contract"

@@ -50,8 +50,13 @@ except Exception as e:
 
 show_execution_state() {
   [ -f ".harness/harness-state.py" ] || return 1
-  [ -f "docs/plans/ACTIVE-PLAN.state.json" ] || return 1
-  echo "EXECUTION STATE (docs/plans/ACTIVE-PLAN.state.json):"
+  if [ -f ".harness/execution-state.json" ]; then
+    echo "EXECUTION STATE (.harness/execution-state.json):"
+  elif [ -f "docs/plans/ACTIVE-PLAN.state.json" ]; then
+    echo "EXECUTION STATE (docs/plans/ACTIVE-PLAN.state.json):"
+  else
+    return 1
+  fi
   local state_out
   if state_out="$(PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py show 2>&1)"; then
     echo "$state_out"

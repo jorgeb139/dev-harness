@@ -42,4 +42,43 @@ out="$(bash "$S")" || fail "exit != 0 con estado estructurado"
 echo "$out" | grep -q "EXECUTION STATE" || fail "no reporta estado estructurado: $out"
 echo "$out" | grep -q "resume this exact action" || fail "no reporta next action: $out"
 
+# Caso 6: estado canónico sin mirror legacy -> usa el resolver canónico
+rm docs/plans/ACTIVE-PLAN.state.json
+out="$(bash "$S")" || fail "exit != 0 con estado canónico único"
+echo "$out" | grep -q "EXECUTION STATE" \
+  || fail "no reporta estado canónico único: $out"
+echo "$out" | grep -q "resume this exact action" \
+  || fail "no resuelve next action desde estado canónico: $out"
+
+# Caso 7: proyecto inicializado con schema v1 -> migra al leer sin plan module
+mkdir -p "$TMP/p7/docs/plans" "$TMP/p7/.harness"; cd "$TMP/p7"
+cp "$ROOT/scripts/harness-state.py" .harness/harness-state.py
+cp "$ROOT/scripts/harness_state.py" .harness/harness_state.py
+cp "$ROOT/scripts/harness_store.py" .harness/harness_store.py
+python3 - "$TMP/p5/.harness/execution-state.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+state["schema_version"] = 1
+for field in (
+    "last_completed_task",
+    "attempt_count",
+    "attempt_metadata",
+    "mode_decision",
+    "selected_mode",
+    "token_estimates",
+    "checkpoint_metadata",
+):
+    state.pop(field)
+Path("docs/plans/ACTIVE-PLAN.state.json").write_text(
+    json.dumps(state), encoding="utf-8"
+)
+PY
+out="$(bash "$S")" || fail "exit != 0 con estado schema v1"
+echo "$out" | grep -q "EXECUTION STATE" || fail "no migra estado schema v1: $out"
+echo "$out" | grep -q "resume this exact action" \
+  || fail "no conserva next action de schema v1: $out"
+
 echo "ALL OK"
