@@ -3,7 +3,7 @@
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-20-project-memory-orchestration-design.md`
 - **Plan detallado:** `docs/superpowers/plans/2026-08-20-project-memory-orchestration.md`
-- **Tarea actual:** ► Etapa 2, tarea 2.1
+- **Tarea actual:** ► Etapa 2, tarea 2.2
 - **Rama base:** develop
 - **Rama de tarea:** codex/project-memory-orchestration
 - **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -41,7 +41,7 @@
 - [ ] Plan JSON canónico, Markdown generado y gates de dependencias/evidencia.
 
 **Tareas:**
-- [ ] 2.1 Implement project memory and learning promotion
+- [x] 2.1 Implement project memory and learning promotion — implementado y revisado; commits `13ae15c`, `16cd82b`
 - [ ] 2.2 Add canonical plan JSON and generated Markdown
 
 **Validación de etapa:** pendiente.
