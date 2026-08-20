@@ -1,0 +1,22 @@
+{
+  "blockers": [],
+  "branch": "codex/project-memory-orchestration",
+  "evidence": [],
+  "history": [
+    {
+      "detail": "plan=project-memory-orchestration",
+      "event": "initialized",
+      "timestamp": "2026-08-20T04:51:22+00:00"
+    }
+  ],
+  "last_verified_commit": "",
+  "next_action": "Dispatch Task 1.1 implementer brief and begin failing storage tests",
+  "owner": "orchestrator",
+  "phase": 1,
+  "plan_file": "docs/plans/ACTIVE-PLAN.md",
+  "plan_id": "project-memory-orchestration",
+  "schema_version": 1,
+  "status": "pending",
+  "task": "1.1",
+  "updated_at": "2026-08-20T04:51:22+00:00"
+}
