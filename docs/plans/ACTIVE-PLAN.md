@@ -3,7 +3,7 @@
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-20-project-memory-orchestration-design.md`
 - **Plan detallado:** `docs/superpowers/plans/2026-08-20-project-memory-orchestration.md`
-- **Tarea actual:** ► Etapa 1, tarea 1.2
+- **Tarea actual:** ► Etapa 1, validación de etapa
 - **Rama base:** develop
 - **Rama de tarea:** codex/project-memory-orchestration
 - **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -30,9 +30,9 @@
 
 **Tareas:**
 - [x] 1.1 Extract shared storage primitives — implementado y revisado; commits `5dfa9a2`, `cdba8ae`
-- [ ] 1.2 Add identity and deterministic project context
+- [x] 1.2 Add identity and deterministic project context — implementado y revisado; commit `d6d0191`
 
-**Validación de etapa:** pendiente; requiere seguridad, regresión, tests y handoff en verde.
+**Validación de etapa:** en revisión; requiere seguridad, regresión, tests y handoff en verde.
 
 ## Etapa 2: Memory and Structured Plans
 
