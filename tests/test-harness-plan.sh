@@ -521,6 +521,57 @@ def completed_probe(probe_id):
     return probe_plan, probe_state
 
 
+symlink_plan, symlink_state = completed_probe("symlink-active-in-root")
+symlink_root = root.parent / "symlink-active-in-root"
+active_snapshots(symlink_root, symlink_plan, symlink_state)
+managed_plan = symlink_root / ".harness/plan.json"
+in_root_plan_target = symlink_root / "active-plan-target.json"
+managed_plan.replace(in_root_plan_target)
+managed_plan.symlink_to(in_root_plan_target)
+try:
+    archive_plan(symlink_root, symlink_plan, symlink_state, handoff_markdown(symlink_state))
+except ValueError as exc:
+    assert "symlink" in str(exc)
+else:
+    raise AssertionError("archive must reject an in-root symlinked active pointer")
+assert managed_plan.is_symlink()
+assert in_root_plan_target.is_file()
+assert not (symlink_root / "docs/plans/history/symlink-active-in-root.md").exists()
+
+outside_plan, outside_state = completed_probe("symlink-active-outside")
+outside_root = root.parent / "symlink-active-outside"
+active_snapshots(outside_root, outside_plan, outside_state)
+managed_plan = outside_root / ".harness/plan.json"
+outside_plan_target = root.parent / "outside-active-plan-target.json"
+managed_plan.replace(outside_plan_target)
+managed_plan.symlink_to(outside_plan_target)
+try:
+    archive_plan(outside_root, outside_plan, outside_state, handoff_markdown(outside_state))
+except ValueError as exc:
+    assert "symlink" in str(exc)
+else:
+    raise AssertionError("archive must reject an outside symlinked active pointer")
+assert outside_plan_target.is_file()
+assert not Path(f"{outside_plan_target}.lock").exists()
+
+artifact_plan, artifact_state = completed_probe("symlink-archive-artifact")
+artifact_root = root.parent / "symlink-archive-artifact"
+active_snapshots(artifact_root, artifact_plan, artifact_state)
+artifact = artifact_root / "docs/plans/history/symlink-archive-artifact.md"
+artifact.parent.mkdir(parents=True)
+artifact.symlink_to(artifact.parent / "missing-archive-target.md")
+try:
+    archive_plan(
+        artifact_root, artifact_plan, artifact_state, handoff_markdown(artifact_state)
+    )
+except ValueError as exc:
+    assert "symlink" in str(exc)
+else:
+    raise AssertionError("archive must reject broken symlink archive artifacts")
+assert artifact.is_symlink()
+assert (artifact_root / ".harness/plan.json").is_file()
+
+
 for label, mutate in (
     (
         "pending-objective",

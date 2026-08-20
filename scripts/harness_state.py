@@ -7,6 +7,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import re
 import sys
 from contextlib import ExitStack, contextmanager
@@ -51,8 +52,37 @@ def _root_path(root: Path) -> Path:
 
 
 def _under_root(root: Path, path: Path) -> Path:
+    root = _root_path(root)
     path = Path(path)
-    return path.resolve() if path.is_absolute() else (root / path).resolve()
+    candidate = path if path.is_absolute() else root / path
+    lexical = _lexical_absolute(candidate)
+    canonical_parent = lexical.parent.resolve() / lexical.name
+    return validate_managed_path(root, canonical_parent, "managed")
+
+
+def _lexical_absolute(path: Path) -> Path:
+    return Path(os.path.abspath(os.fspath(Path(path))))
+
+
+def _reject_symlink_components(path: Path, label: str) -> None:
+    candidate = _lexical_absolute(path)
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current /= part
+        if current.is_symlink():
+            raise ValueError(f"{label} path must not use symlinks: {current}")
+
+
+def validate_managed_path(root: Path, path: Path, label: str) -> Path:
+    """Return a lexical in-project path after rejecting all symlink components."""
+    root = _root_path(root)
+    candidate = _lexical_absolute(path)
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{label} path escapes project root: {path}") from exc
+    _reject_symlink_components(candidate, label)
+    return candidate
 
 
 def _standard_state_paths(root: Path) -> tuple[Path, Path]:
@@ -72,6 +102,7 @@ def resolve_execution_state(
     *,
     for_init: bool = False,
     allow_pending: bool = False,
+    plan: dict | None = None,
 ) -> ExecutionStateResolution:
     """Resolve canonical state with deterministic legacy fallback and divergence checks."""
     root = _root_path(root)
@@ -84,22 +115,22 @@ def resolve_execution_state(
         requested_path = _under_root(root, Path(requested))
         if requested_path not in {canonical, legacy}:
             if requested_path.exists():
-                migrate_state(load_json(requested_path))
+                migrate_state(load_json(requested_path), plan=plan)
             return ExecutionStateResolution(requested_path, (requested_path,))
 
     canonical_exists = canonical.exists()
     legacy_exists = legacy.exists()
     if canonical_exists and legacy_exists:
-        canonical_value = migrate_state(load_json(canonical))
-        legacy_value = migrate_state(load_json(legacy))
+        canonical_value = migrate_state(load_json(canonical), plan=plan)
+        legacy_value = migrate_state(load_json(legacy), plan=plan)
         if canonical_value != legacy_value:
             raise ValueError("canonical and legacy execution states diverge")
         return ExecutionStateResolution(canonical, (canonical, legacy))
     if canonical_exists:
-        migrate_state(load_json(canonical))
+        migrate_state(load_json(canonical), plan=plan)
         return ExecutionStateResolution(canonical, (canonical, legacy))
     if legacy_exists:
-        migrate_state(load_json(legacy))
+        migrate_state(load_json(legacy), plan=plan)
         return ExecutionStateResolution(legacy, (canonical, legacy))
     if for_init:
         return ExecutionStateResolution(canonical, (canonical, legacy))
@@ -119,10 +150,15 @@ def _candidate_state_paths(root: Path, requested: Path | None) -> tuple[Path, ..
 @contextmanager
 def locked_paths(paths: list[Path] | tuple[Path, ...]):
     """Acquire shared store locks in deterministic path order."""
-    ordered = sorted({Path(path).resolve() for path in paths}, key=str)
+    ordered = sorted({_lexical_absolute(path) for path in paths}, key=str)
+    for path in ordered:
+        _reject_symlink_components(path, "lock target")
+        _reject_symlink_components(Path(f"{path}.lock"), "lock file")
     with ExitStack() as stack:
         for path in ordered:
             stack.enter_context(locked(path))
+            _reject_symlink_components(path, "lock target")
+            _reject_symlink_components(Path(f"{path}.lock"), "lock file")
         yield
 
 
@@ -147,26 +183,26 @@ def _transaction_id(value: str) -> str:
 
 
 def _stable_internal_directory(root: Path, relative: Path, label: str) -> Path:
-    directory = root / relative
-    if directory.resolve() != directory:
-        raise ValueError(f"{label} path must remain inside the project without symlinks")
-    return directory
+    return validate_managed_path(root, root / relative, label)
 
 
 def _transaction_directory(root: Path, transaction_id: str) -> Path:
     transactions = _stable_internal_directory(
         root, Path(".harness/transactions"), "transaction root"
     )
-    directory = transactions / transaction_id
-    if directory.resolve() != directory:
-        raise ValueError("transaction directory path must not use symlinks")
-    return directory
+    return validate_managed_path(
+        root, transactions / transaction_id, "transaction directory"
+    )
 
 
 def transaction_manifest_path(root: Path, transaction_id: str) -> Path:
     root = _root_path(root)
     transaction_id = _transaction_id(transaction_id)
-    return _transaction_directory(root, transaction_id) / "manifest.json"
+    return validate_managed_path(
+        root,
+        _transaction_directory(root, transaction_id) / "manifest.json",
+        "transaction manifest",
+    )
 
 
 def transaction_lock_path(root: Path, transaction_id: str) -> Path:
@@ -176,14 +212,12 @@ def transaction_lock_path(root: Path, transaction_id: str) -> Path:
     locks = _stable_internal_directory(
         root, Path(".harness/transaction-locks"), "transaction lock root"
     )
-    return locks / transaction_id
+    return validate_managed_path(root, locks / transaction_id, "transaction lock target")
 
 
 def _relative_path(root: Path, path: Path) -> str:
-    try:
-        relative = Path(path).resolve().relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"transaction path escapes project root: {path}") from exc
+    candidate = validate_managed_path(root, path, "transaction destination")
+    relative = candidate.relative_to(root)
     return relative.as_posix()
 
 
@@ -222,12 +256,14 @@ def _resolved_manifest_path(
     relative = Path(raw_path)
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
         raise ValueError(f"transaction {label} path must be traversal-free and relative")
-    base = base.resolve()
-    resolved = (base / relative).resolve()
+    base = _lexical_absolute(base)
+    _reject_symlink_components(base, f"transaction {label} root")
+    resolved = _lexical_absolute(base / relative)
     try:
         resolved.relative_to(base)
     except ValueError as exc:
         raise ValueError(f"transaction {label} path escapes its allowed root") from exc
+    _reject_symlink_components(resolved, f"transaction {label}")
     if direct_child and (len(relative.parts) != 1 or resolved.parent != base):
         raise ValueError(f"transaction {label} path must be a direct staged payload")
     return resolved
@@ -401,6 +437,33 @@ def publish_transaction(
     transaction_id = _transaction_id(transaction_id)
     if not writes:
         raise ValueError("transaction requires at least one write")
+    prepared_writes: list[tuple[Path, str, str, str]] = []
+    prepared_deletes: list[tuple[Path, str, str | None]] = []
+    destinations: set[str] = set()
+    for destination_value, payload in writes.items():
+        destination = validate_managed_path(
+            root, destination_value, "transaction destination"
+        )
+        relative = _relative_path(root, destination)
+        if relative in destinations:
+            raise ValueError(f"duplicate transaction destination: {relative}")
+        destinations.add(relative)
+        kind, value = payload
+        prepared_writes.append(
+            (destination, relative, kind, _serialized_content(kind, value))
+        )
+    for destination_value in deletes:
+        destination = validate_managed_path(
+            root, destination_value, "transaction delete destination"
+        )
+        relative = _relative_path(root, destination)
+        if relative in destinations:
+            raise ValueError(
+                f"transaction cannot write and delete the same path: {relative}"
+            )
+        destinations.add(relative)
+        prepared_deletes.append((destination, relative, file_fingerprint(destination)))
+
     manifest_path = transaction_manifest_path(root, transaction_id)
     directory = manifest_path.parent
     if manifest_path.exists():
@@ -409,16 +472,8 @@ def publish_transaction(
         _clear_transaction_directory(directory)
     directory.mkdir(parents=True, exist_ok=True)
     write_entries = []
-    write_destinations = set()
     try:
-        for index, (destination_value, payload) in enumerate(writes.items()):
-            destination = Path(destination_value).resolve()
-            relative = _relative_path(root, destination)
-            if relative in write_destinations:
-                raise ValueError(f"duplicate transaction destination: {relative}")
-            write_destinations.add(relative)
-            kind, value = payload
-            content = _serialized_content(kind, value)
+        for index, (destination, relative, kind, content) in enumerate(prepared_writes):
             staged_name = f"{index:04d}.payload"
             staged_path = directory / staged_name
             atomic_write_text(staged_path, content)
@@ -430,12 +485,7 @@ def publish_transaction(
                 "desired": file_fingerprint(staged_path),
             })
         delete_entries = []
-        for destination_value in deletes:
-            destination = Path(destination_value).resolve()
-            relative = _relative_path(root, destination)
-            if relative in write_destinations:
-                raise ValueError(f"transaction cannot write and delete the same path: {relative}")
-            before = file_fingerprint(destination)
+        for _, relative, before in prepared_deletes:
             if before is None:
                 continue
             delete_entries.append({"destination": relative, "before": before})
@@ -465,7 +515,76 @@ def _checkpoint_from_evidence(value: dict) -> dict | None:
     return None
 
 
-def migrate_state(value: dict) -> dict:
+def _plan_mode_fields(plan: dict) -> tuple[list[str], str, str | None, dict]:
+    if not isinstance(plan, dict) or not isinstance(plan.get("mode_options"), dict):
+        raise ValueError("canonical plan mode_options are required for state migration")
+    mode = plan["mode_options"]
+    options = mode.get("options")
+    recommendation = mode.get("recommendation")
+    choice = mode.get("choice")
+    estimates = mode.get("estimates")
+    if (
+        not isinstance(options, list)
+        or not options
+        or not all(isinstance(option, str) and option.strip() for option in options)
+    ):
+        raise ValueError("canonical plan modes are invalid for state migration")
+    if len(set(options)) != len(options):
+        raise ValueError("canonical plan modes must not contain duplicates")
+    if recommendation not in options:
+        raise ValueError("canonical plan mode recommendation is invalid")
+    if choice is not None and choice not in options:
+        raise ValueError("canonical plan mode choice is invalid")
+    if not isinstance(estimates, dict) or set(estimates) != set(options):
+        raise ValueError("canonical plan mode estimates are incomplete")
+    if not all(isinstance(estimates[option], str) and estimates[option].strip() for option in options):
+        raise ValueError("canonical plan mode estimates must be non-empty strings")
+    return options, recommendation, choice, estimates
+
+
+def _migrated_mode_decision(value: dict, plan: dict | None) -> dict | None:
+    selected = value.get("selected_mode")
+    if selected is None:
+        return None
+    if plan is None:
+        raise ValueError(
+            "post-decision state migration requires locked canonical plan context"
+        )
+    _, recommendation, choice, estimates = _plan_mode_fields(plan)
+    if selected != choice:
+        raise ValueError("state selected mode conflicts with canonical plan mode choice")
+    if value.get("token_estimates") != estimates:
+        raise ValueError("state token estimates conflict with canonical plan estimates")
+    return {
+        "recommendation": recommendation,
+        "choice": choice,
+        "estimates": copy.deepcopy(estimates),
+    }
+
+
+def validate_state_mode_for_plan_contract(plan: dict, state: dict) -> None:
+    """Validate the complete canonical mode decision shared by plan/state callers."""
+    validate_state(state)
+    options, recommendation, choice, estimates = _plan_mode_fields(plan)
+    if state["selected_mode"] != choice:
+        raise ValueError("state selected_mode does not match plan mode choice")
+    expected_estimates = estimates if choice is not None else {}
+    if state["token_estimates"] != expected_estimates:
+        raise ValueError("state token_estimates do not match the active plan decision")
+    if choice is None:
+        if state["mode_decision"] is not None:
+            raise ValueError("pre-decision state conflicts with the canonical plan")
+        return
+    decision = state["mode_decision"]
+    if decision["recommendation"] != recommendation:
+        raise ValueError("state mode recommendation does not match the canonical plan")
+    if decision["choice"] != choice:
+        raise ValueError("state mode choice does not match the canonical plan")
+    if decision["estimates"] != estimates or set(decision["estimates"]) != set(options):
+        raise ValueError("state mode estimates do not match every canonical plan mode")
+
+
+def migrate_state(value: dict, *, plan: dict | None = None) -> dict:
     """Return a validated schema-v2 state, deterministically upgrading schema v1."""
     if not isinstance(value, dict):
         raise ValueError("state must be a JSON object")
@@ -473,18 +592,10 @@ def migrate_state(value: dict) -> dict:
     if schema_version == SCHEMA_VERSION:
         migrated = copy.deepcopy(value)
         if "mode_decision" not in migrated:
-            selected = migrated.get("selected_mode")
-            estimates = migrated.get("token_estimates", {})
-            migrated["mode_decision"] = (
-                {
-                    "recommendation": selected,
-                    "choice": selected,
-                    "estimates": copy.deepcopy(estimates),
-                }
-                if selected is not None
-                else None
-            )
+            migrated["mode_decision"] = _migrated_mode_decision(migrated, plan)
         validate_state(migrated)
+        if plan is not None:
+            validate_state_mode_for_plan_contract(plan, migrated)
         return migrated
     if schema_version != 1:
         raise ValueError(f"unsupported state schema: {schema_version}")
@@ -498,14 +609,7 @@ def migrate_state(value: dict) -> dict:
     migrated.setdefault("attempt_metadata", [])
     decision = migrated.get("mode_decision")
     if decision is None:
-        selected = migrated.get("selected_mode")
-        estimates = migrated.get("token_estimates", {})
-        if selected is not None:
-            decision = {
-                "recommendation": selected,
-                "choice": selected,
-                "estimates": copy.deepcopy(estimates),
-            }
+        decision = _migrated_mode_decision(migrated, plan)
     migrated["mode_decision"] = copy.deepcopy(decision)
     if isinstance(decision, dict):
         migrated.setdefault("selected_mode", decision.get("choice"))
@@ -515,10 +619,12 @@ def migrate_state(value: dict) -> dict:
         migrated.setdefault("token_estimates", {})
     migrated.setdefault("checkpoint_metadata", _checkpoint_from_evidence(migrated))
     validate_state(migrated)
+    if plan is not None:
+        validate_state_mode_for_plan_contract(plan, migrated)
     return migrated
 
 
-def load_state(state_path: Path) -> dict:
+def load_state(state_path: Path, *, plan: dict | None = None) -> dict:
     state_path = Path(state_path)
     try:
         value = load_json(state_path)
@@ -528,7 +634,7 @@ def load_state(state_path: Path) -> dict:
         if str(exc).startswith("malformed JSON:"):
             raise ValueError(f"malformed state JSON: {state_path}") from exc
         raise
-    return migrate_state(value)
+    return migrate_state(value, plan=plan)
 
 
 def _validate_checkpoint_metadata(value: object, label: str) -> None:
@@ -680,7 +786,22 @@ def validate_state(value: dict) -> None:
         raise ValueError("blockers must contain non-empty strings")
     if not isinstance(value["history"], list) or not value["history"]:
         raise ValueError("history must be a non-empty array")
+    for index, item in enumerate(value["history"]):
+        if not isinstance(item, dict):
+            raise ValueError(f"history[{index}] must be an object")
+        missing_history = sorted({"event", "timestamp", "detail"} - set(item))
+        if missing_history:
+            raise ValueError(
+                f"history[{index}] missing fields: {', '.join(missing_history)}"
+            )
+        for field in ("event", "timestamp"):
+            if not isinstance(item[field], str) or not item[field].strip():
+                raise ValueError(f"history[{index}].{field} must be a non-empty string")
+        if not isinstance(item["detail"], str):
+            raise ValueError(f"history[{index}].detail must be a string")
     if value["status"] == "completed":
+        if value["last_completed_task"] != value["task"]:
+            raise ValueError("completed state requires last_completed_task to equal task")
         if not value["last_verified_commit"]:
             raise ValueError("completed state requires last_verified_commit")
         if value["checkpoint_metadata"] is None:
@@ -704,6 +825,7 @@ def _prose(value: object) -> str:
 
 
 def handoff_markdown(value: dict) -> str:
+    validate_state(value)
     lines = [
         f"# Handoff: {_prose(value['plan_id'])}", "",
         f"- Status: {_code_span(value['status'])}",
@@ -933,22 +1055,24 @@ def _mutation_paths(args: argparse.Namespace) -> tuple[Path, Path, Path | None, 
 
 def mutate(args: argparse.Namespace, operation) -> None:
     root, handoff_path, requested, candidates, transaction_id = _mutation_paths(args)
+    plan_path = _path_from_arg(root, args.plan_json)
     lock_targets = list(candidates) + [
         handoff_path,
-        _path_from_arg(root, args.plan_json),
+        plan_path,
         root / ACTIVE_MARKDOWN_RELATIVE,
         transaction_lock_path(root, transaction_id),
     ]
     with locked_paths(lock_targets):
         resume_transaction(root, transaction_id)
-        resolution = resolve_execution_state(root, requested)
-        value = load_state(resolution.path)
+        plan = load_json(plan_path) if plan_path.exists() else None
+        resolution = resolve_execution_state(root, requested, plan=plan)
+        value = load_state(resolution.path, plan=plan)
         operation(value)
         _persist_state_mutation(
             root,
             resolution,
             handoff_path,
-            _path_from_arg(root, args.plan_json),
+            plan_path,
             value,
             transaction_id,
         )
@@ -1107,11 +1231,16 @@ def _read_resolution(args: argparse.Namespace) -> tuple[ExecutionStateResolution
     requested = Path(args.state_file) if args.state_file else None
     candidates = _candidate_state_paths(root, requested)
     transaction_id = _state_transaction_id(root, requested)
-    with locked_paths(list(candidates) + [transaction_lock_path(root, transaction_id)]):
+    plan_path = _path_from_arg(root, args.plan_json)
+    lock_targets = list(candidates) + [transaction_lock_path(root, transaction_id)]
+    if plan_path.exists() or plan_path.is_symlink():
+        lock_targets.append(plan_path)
+    with locked_paths(lock_targets):
         if resume_transaction(root, transaction_id):
             pass
-        resolution = resolve_execution_state(root, requested)
-        value = load_state(resolution.path)
+        plan = load_json(plan_path) if plan_path.exists() else None
+        resolution = resolve_execution_state(root, requested, plan=plan)
+        value = load_state(resolution.path, plan=plan)
     return resolution, value
 
 

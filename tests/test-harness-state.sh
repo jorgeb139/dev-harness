@@ -129,9 +129,11 @@ import json
 from pathlib import Path
 import sys
 
-from harness_plan import load_plan
+from harness_plan import load_plan, validate_state_mode_for_plan
 from harness_state import (
+    handoff_markdown,
     load_state,
+    migrate_state,
     resolve_execution_state,
     validate_state,
     validate_task_transition,
@@ -198,6 +200,80 @@ early_v2_migrated = load_state(early_v2_path)
 assert early_v2_migrated["schema_version"] == 2
 assert early_v2_migrated["mode_decision"] is None
 
+mode_plan = load_plan(root / ".harness/plan.json")
+mode_plan["mode_options"]["choice"] = "mixed"
+post_decision_v2 = copy.deepcopy(canonical_value)
+post_decision_v2.update({
+    "selected_mode": "mixed",
+    "token_estimates": copy.deepcopy(mode_plan["mode_options"]["estimates"]),
+})
+post_decision_v2.pop("mode_decision")
+post_decision_path = root / ".harness/early-post-decision-v2-state.json"
+post_decision_path.write_text(json.dumps(post_decision_v2), encoding="utf-8")
+post_decision_migrated = load_state(post_decision_path, plan=mode_plan)
+assert post_decision_migrated["mode_decision"]["recommendation"] == "single-agent"
+assert post_decision_migrated["mode_decision"]["choice"] == "mixed"
+assert post_decision_migrated["mode_decision"]["estimates"] == (
+    mode_plan["mode_options"]["estimates"]
+)
+validate_state_mode_for_plan(mode_plan, post_decision_migrated)
+
+try:
+    load_state(post_decision_path)
+except ValueError as exc:
+    assert "plan" in str(exc) and "migration" in str(exc)
+else:
+    raise AssertionError("post-decision early-v2 migration requires canonical plan context")
+
+wrong_recommendation = copy.deepcopy(post_decision_migrated)
+wrong_recommendation["mode_decision"]["recommendation"] = "mixed"
+try:
+    validate_state_mode_for_plan(mode_plan, wrong_recommendation)
+except ValueError as exc:
+    assert "recommendation" in str(exc)
+else:
+    raise AssertionError("state recommendation must match the canonical plan")
+
+wrong_estimates = copy.deepcopy(post_decision_v2)
+wrong_estimates["token_estimates"]["mixed"] = "invented"
+try:
+    migrate_state(wrong_estimates, plan=mode_plan)
+except ValueError as exc:
+    assert "estimate" in str(exc)
+else:
+    raise AssertionError("early-v2 migration must not reconcile conflicting estimates")
+
+completed_state = copy.deepcopy(canonical_value)
+completed_state.update({
+    "status": "completed",
+    "last_verified_commit": "abc123",
+    "checkpoint_metadata": {
+        "timestamp": "2026-08-20T12:00:00+00:00",
+        "commit": "abc123",
+        "test_command": "bash tests/test-harness-state.sh",
+        "result": "ALL OK",
+    },
+})
+for last_completed in (None, "stale-task"):
+    invalid_completed = copy.deepcopy(completed_state)
+    invalid_completed["last_completed_task"] = last_completed
+    try:
+        migrate_state(invalid_completed)
+    except ValueError as exc:
+        assert "last_completed_task" in str(exc)
+    else:
+        raise AssertionError("completed state must identify its current task as completed")
+
+malformed_history = copy.deepcopy(canonical_value)
+malformed_history["history"] = ["not-an-event"]
+for operation in (validate_state, handoff_markdown):
+    try:
+        operation(malformed_history)
+    except ValueError as exc:
+        assert "history[0]" in str(exc)
+    else:
+        raise AssertionError("malformed history must fail before handoff projection")
+
 for bad_state in (
     {
         **copy.deepcopy(canonical_value),
@@ -260,7 +336,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from harness_state import resume_transaction
+from harness_state import locked_paths, resume_transaction
 
 base = Path(sys.argv[1]).resolve()
 cli = Path(sys.argv[2]).resolve()
@@ -351,6 +427,35 @@ outside_payload.write_text("payload", encoding="utf-8")
 directory = write_manifest(probe, "evil-staged-link", "inside.txt", "payload-link")
 (directory / "payload-link").symlink_to(outside_payload)
 expect_rejected(probe, "evil-staged-link", [outside_payload], [probe / "inside.txt"])
+
+probe = base / "manifest-in-root-destination-symlink"
+probe.mkdir(parents=True)
+in_root_target = probe / "target.txt"
+(probe / "inside.txt").symlink_to(in_root_target)
+directory = write_manifest(probe, "evil-in-root-link", "inside.txt", "payload")
+(directory / "payload").write_text("payload", encoding="utf-8")
+expect_rejected(probe, "evil-in-root-link", [], [in_root_target])
+assert (probe / "inside.txt").is_symlink()
+
+probe = base / "manifest-in-root-staged-symlink"
+directory = write_manifest(probe, "evil-in-root-staged-link", "inside.txt", "payload-link")
+(directory / "payload-target").write_text("payload", encoding="utf-8")
+(directory / "payload-link").symlink_to(directory / "payload-target")
+expect_rejected(probe, "evil-in-root-staged-link", [], [probe / "inside.txt"])
+
+probe = base / "broken-lock-target"
+probe.mkdir(parents=True)
+outside_lock_target = base / "missing-outside-lock-target"
+managed_lock_target = probe / "managed"
+managed_lock_target.symlink_to(outside_lock_target)
+try:
+    with locked_paths([managed_lock_target]):
+        pass
+except ValueError as exc:
+    assert "symlink" in str(exc)
+else:
+    raise AssertionError("broken symlink lock targets must fail closed")
+assert not Path(f"{outside_lock_target}.lock").exists()
 
 probe = base / "manifest-directory-symlink"
 (probe / ".harness/transactions").mkdir(parents=True)

@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
@@ -413,17 +414,9 @@ def _phase_for_task(plan: dict, task_id: str) -> str:
 
 
 def validate_state_mode_for_plan(plan: dict, state: dict) -> None:
-    mode = plan["mode_options"]
-    choice = mode.get("choice")
-    if state["selected_mode"] != choice:
-        raise ValueError("state selected_mode does not match plan mode choice")
-    expected_estimates = mode["estimates"] if choice is not None else {}
-    if state["token_estimates"] != expected_estimates:
-        raise ValueError("state token_estimates do not match the active plan decision")
-    if choice is not None:
-        decision = state["mode_decision"]
-        if set(decision["estimates"]) != set(mode["options"]):
-            raise ValueError("state mode decision does not cover the plan declared modes")
+    from harness_state import validate_state_mode_for_plan_contract
+
+    validate_state_mode_for_plan_contract(plan, state)
 
 
 def _current_pointer(plan: dict, state: dict | None) -> tuple[str, str]:
@@ -629,10 +622,16 @@ def _validate_mode_decision(plan: dict, decision: dict) -> dict:
 
 
 def _project_root_for_plan(plan_path: Path) -> Path:
-    path = Path(plan_path).resolve()
+    path = Path(os.path.abspath(os.fspath(Path(plan_path))))
     if path.parent.name == ".harness":
-        return path.parent.parent
+        return path.parent.parent.resolve()
     return Path.cwd().resolve()
+
+
+def _canonical_parent_path(path: Path) -> Path:
+    """Canonicalize parent directories without dereferencing the managed leaf."""
+    lexical = Path(os.path.abspath(os.fspath(Path(path))))
+    return lexical.parent.resolve() / lexical.name
 
 
 def _standard_state_candidates(root: Path, requested: Path | None) -> tuple[Path, ...]:
@@ -640,7 +639,7 @@ def _standard_state_candidates(root: Path, requested: Path | None) -> tuple[Path
     legacy = root / "docs/plans/ACTIVE-PLAN.state.json"
     if requested is None:
         return canonical, legacy
-    requested = Path(requested).resolve()
+    requested = _canonical_parent_path(requested)
     if requested in {canonical, legacy}:
         return canonical, legacy
     return (requested,)
@@ -651,11 +650,11 @@ def record_mode_decision(plan_path: Path, state_path: Path, decision: dict) -> N
     from harness_state import (
         handoff_markdown, load_state, locked_paths, publish_transaction,
         resolve_execution_state, resume_transaction, transaction_lock_path, validate_state,
-        value_fingerprint,
+        validate_managed_path, value_fingerprint,
     )
 
-    plan_path = Path(plan_path).resolve()
-    state_path = Path(state_path).resolve()
+    plan_path = _canonical_parent_path(plan_path)
+    state_path = _canonical_parent_path(state_path)
     root = _project_root_for_plan(plan_path)
     transaction_id = "mode-decision"
     metadata = {
@@ -670,12 +669,14 @@ def record_mode_decision(plan_path: Path, state_path: Path, decision: dict) -> N
         plan_path, active_markdown, active_handoff,
         transaction_lock_path(root, transaction_id),
     ]
+    for target in lock_targets:
+        validate_managed_path(root, target, "mode managed")
     with locked_paths(lock_targets):
         if resume_transaction(root, transaction_id, metadata):
             return
-        resolution = resolve_execution_state(root, state_path)
         plan = load_plan(plan_path)
-        state = load_state(resolution.path)
+        resolution = resolve_execution_state(root, state_path, plan=plan)
+        state = load_state(resolution.path, plan=plan)
         if state["plan_id"] != plan["plan_id"]:
             raise ValueError("state plan_id does not match plan")
         normalized = _validate_mode_decision(plan, decision)
@@ -900,9 +901,9 @@ def archive_plan(root: Path, plan: dict, state: dict, handoff: str) -> Path:
     with locked_paths(lock_targets):
         if resume_transaction(root, transaction_id, metadata):
             return archive_path
-        resolution = resolve_execution_state(root, allow_pending=False)
         active_plan = load_plan(active_plan_path)
-        active_state = load_state(resolution.path)
+        resolution = resolve_execution_state(root, allow_pending=False, plan=active_plan)
+        active_state = load_state(resolution.path, plan=active_plan)
         if active_plan != plan:
             raise ValueError("stale archive caller: active plan snapshot changed")
         if active_state != state:
@@ -979,8 +980,8 @@ def command_render(args: argparse.Namespace) -> None:
 
     plan = load_plan(args.plan_json)
     root = _project_root_for_plan(args.plan_json)
-    resolution = resolve_execution_state(root, args.state_json)
-    state = load_state(resolution.path)
+    resolution = resolve_execution_state(root, args.state_json, plan=plan)
+    state = load_state(resolution.path, plan=plan)
     atomic_write_text(args.output, render_markdown(plan, state))
     print(f"plan: rendered {args.output}")
 
@@ -1061,8 +1062,10 @@ def command_archive(args: argparse.Namespace) -> None:
         print(f"plan: archived {recovered}")
         return
     plan = load_plan(args.plan_json)
-    resolution = resolve_execution_state(root, args.state_json, allow_pending=True)
-    state = load_state(resolution.path)
+    resolution = resolve_execution_state(
+        root, args.state_json, allow_pending=True, plan=plan
+    )
+    state = load_state(resolution.path, plan=plan)
     try:
         handoff = args.handoff_file.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
