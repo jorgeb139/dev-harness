@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from harness_context import (  # noqa: E402
     validate_identity,
 )
 from harness_store import atomic_write_json, atomic_write_text, load_json, locked, utc_now  # noqa: E402
+from harness_memory import load_memory, record_correction, record_learning  # noqa: E402
 
 
 class IdentityMismatch(ValueError):
@@ -130,6 +132,26 @@ def command_context_check(args: argparse.Namespace) -> None:
     print(status)
 
 
+def command_memory_list(args: argparse.Namespace) -> None:
+    root = _root()
+    _load_valid_identity(root)
+    print(json.dumps(load_memory(root), indent=2, sort_keys=True))
+
+
+def command_memory_always(args: argparse.Namespace) -> None:
+    root = _root()
+    _load_valid_identity(root)
+    entry = record_learning(root, args.text, source="explicit_always", explicit_always=True)
+    print(entry["notification"])
+
+
+def command_memory_correction(args: argparse.Namespace) -> None:
+    root = _root()
+    _load_valid_identity(root)
+    entry = record_correction(root, args.text)
+    print(entry.get("notification", f"MEMORY CANDIDATE: {entry['id']}"))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_subparsers(dest="resource", required=True)
@@ -142,6 +164,15 @@ def build_parser() -> argparse.ArgumentParser:
     context_commands.add_parser("init").set_defaults(handler=command_context_init)
     context_commands.add_parser("check").set_defaults(handler=command_context_check)
     context_commands.add_parser("refresh").set_defaults(handler=command_context_refresh)
+    memory = group.add_parser("memory")
+    memory_commands = memory.add_subparsers(dest="command", required=True)
+    memory_commands.add_parser("list").set_defaults(handler=command_memory_list)
+    always = memory_commands.add_parser("always")
+    always.add_argument("--text", required=True)
+    always.set_defaults(handler=command_memory_always)
+    correction = memory_commands.add_parser("correction")
+    correction.add_argument("--text", required=True)
+    correction.set_defaults(handler=command_memory_correction)
     return parser
 
 

@@ -71,6 +71,90 @@ fresh="$(cd "$PROJECT" && python3 "$CLI" context check)" \
   || fail "context check debe informar fresh sin fallar"
 [ "$fresh" = "fresh" ] || fail "context check debe informar fresh"
 
+always_output="$(cd "$PROJECT" && python3 "$CLI" memory always \
+  --text "Use focused tests before changing behavior")" \
+  || fail "memory always debe funcionar"
+always_id="$(printf '%s\n' "$always_output" | sed -n 's/^MEMORY UPDATED: //p')"
+[ -n "$always_id" ] || fail "memory always debe notificar el ID de la regla"
+
+PYTHONPATH="$ROOT/scripts" python3 - "$PROJECT" "$always_id" <<'PY'
+import sys
+from pathlib import Path
+
+from harness_memory import load_memory
+
+memory = load_memory(Path(sys.argv[1]))
+entry = next(entry for entry in memory["entries"] if entry["id"] == sys.argv[2])
+assert entry["rule"] == "Use focused tests before changing behavior"
+assert entry["scope"] == "project"
+assert entry["source"] == "explicit_always"
+assert entry["occurrences"] == 1
+assert entry["confidence"] == "high"
+assert entry["status"] == "active"
+assert entry["project_identity"] == memory["project_identity"]
+assert entry["notification"] == f"MEMORY UPDATED: {entry['id']}"
+PY
+
+first_correction="$(cd "$PROJECT" && python3 "$CLI" memory correction \
+  --text "Por favor, siempre usa nombres descriptivos en las pruebas")" \
+  || fail "la primera corrección debe funcionar"
+correction_id="$(printf '%s\n' "$first_correction" | sed -n 's/^MEMORY CANDIDATE: //p')"
+[ -n "$correction_id" ] || fail "la primera corrección debe quedar como candidata"
+
+second_correction="$(cd "$PROJECT" && python3 "$CLI" memory correction \
+  --text "usa nombres descriptivos en las pruebas")" \
+  || fail "la segunda corrección equivalente debe funcionar"
+[ "$second_correction" = "MEMORY UPDATED: $correction_id" ] \
+  || fail "la segunda corrección debe promover y notificar la misma regla"
+
+PYTHONPATH="$ROOT/scripts" python3 - "$PROJECT" "$correction_id" <<'PY'
+import sys
+from pathlib import Path
+
+from harness_memory import load_memory
+
+memory = load_memory(Path(sys.argv[1]))
+entry = next(entry for entry in memory["entries"] if entry["id"] == sys.argv[2])
+assert entry["source"] == "repeated_correction"
+assert entry["occurrences"] == 2
+assert entry["confidence"] == "high"
+assert entry["status"] == "active"
+assert entry["notification"] == f"MEMORY UPDATED: {entry['id']}"
+PY
+
+uncertain_output="$(cd "$PROJECT" && python3 "$CLI" memory correction \
+  --text "Agrupa las aserciones por flujo de usuario")" \
+  || fail "la corrección incierta debe funcionar"
+uncertain_id="$(printf '%s\n' "$uncertain_output" | sed -n 's/^MEMORY CANDIDATE: //p')"
+[ -n "$uncertain_id" ] || fail "la corrección incierta debe quedar como candidata"
+
+PYTHONPATH="$ROOT/scripts" python3 - "$PROJECT" "$uncertain_id" <<'PY'
+import sys
+from pathlib import Path
+
+from harness_memory import load_memory
+
+memory = load_memory(Path(sys.argv[1]))
+entry = next(entry for entry in memory["entries"] if entry["id"] == sys.argv[2])
+assert entry["occurrences"] == 1
+assert entry["confidence"] == "candidate"
+assert entry["status"] == "candidate"
+assert "notification" not in entry
+PY
+
+expect_exit 1 bash -c "cd '$PROJECT' && python3 '$CLI' memory always --text 'api_key=not-a-real-secret'"
+if grep -R -Fq 'not-a-real-secret' "$PROJECT/.harness/memory" 2>/dev/null; then
+  fail "los secretos no deben persistirse en memoria"
+fi
+
+memory_list="$(cd "$PROJECT" && python3 "$CLI" memory list)" \
+  || fail "memory list debe funcionar"
+printf '%s\n' "$memory_list" | python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+assert len(value["entries"]) == 3
+'
+
 cp "$PROJECT/PROJECT-CONTEXT.md" "$PROJECT/PROJECT-CONTEXT.backup"
 printf '# malformed\n' > "$PROJECT/PROJECT-CONTEXT.md"
 expect_exit 1 bash -c "cd '$PROJECT' && python3 '$CLI' context check"
@@ -80,6 +164,20 @@ OTHER="$TMP/other-project"
 mkdir -p "$OTHER"
 cp -R "$PROJECT/.harness" "$OTHER/.harness"
 expect_exit 2 bash -c "cd '$OTHER' && python3 '$CLI' identity check"
+expect_exit 2 bash -c "cd '$OTHER' && python3 '$CLI' memory list"
+PYTHONPATH="$ROOT/scripts" python3 - "$OTHER" <<'PY'
+import sys
+from pathlib import Path
+
+from harness_memory import load_memory
+
+try:
+    load_memory(Path(sys.argv[1]))
+except ValueError as exc:
+    assert "identity mismatch" in str(exc)
+else:
+    raise AssertionError("cross-project memory must be rejected")
+PY
 
 git -C "$PROJECT" remote set-url origin 'ssh://git@example.test/team/other.git'
 expect_exit 2 bash -c "cd '$PROJECT' && python3 '$CLI' identity check"
