@@ -135,6 +135,7 @@ from harness_state import (
     load_state,
     migrate_state,
     resolve_execution_state,
+    save_state,
     validate_state,
     validate_task_transition,
 )
@@ -273,6 +274,46 @@ for operation in (validate_state, handoff_markdown):
         assert "history[0]" in str(exc)
     else:
         raise AssertionError("malformed history must fail before handoff projection")
+
+for label, evidence_item in (
+    ("string", "not-an-evidence-record"),
+    ("null", None),
+    ("list", ["not", "an", "object"]),
+):
+    malformed_evidence = copy.deepcopy(canonical_value)
+    malformed_evidence["evidence"] = [evidence_item]
+    for operation in (validate_state, handoff_markdown):
+        try:
+            operation(malformed_evidence)
+        except ValueError as exc:
+            assert "evidence[0]" in str(exc)
+        else:
+            raise AssertionError(f"{label} evidence must fail before projection")
+    state_output = root / f".harness/invalid-evidence-{label}.json"
+    handoff_output = root / f"docs/plans/invalid-evidence-{label}.md"
+    try:
+        save_state(state_output, handoff_output, malformed_evidence)
+    except ValueError as exc:
+        assert "evidence[0]" in str(exc)
+    else:
+        raise AssertionError(f"save_state must reject {label} evidence")
+    assert not state_output.exists()
+    assert not handoff_output.exists()
+
+for field, invalid_value in (
+    ("timestamp", None),
+    ("commit", []),
+    ("test_command", 1),
+    ("result", False),
+):
+    malformed_evidence = copy.deepcopy(canonical_value)
+    malformed_evidence["evidence"] = [{field: invalid_value}]
+    try:
+        validate_state(malformed_evidence)
+    except ValueError as exc:
+        assert f"evidence[0].{field}" in str(exc)
+    else:
+        raise AssertionError(f"known evidence field {field} must be typed")
 
 for bad_state in (
     {

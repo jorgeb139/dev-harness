@@ -782,6 +782,16 @@ def validate_state(value: dict) -> None:
     _validate_checkpoint_metadata(value["checkpoint_metadata"], "checkpoint_metadata")
     if not isinstance(value["evidence"], list) or not isinstance(value["blockers"], list):
         raise ValueError("evidence and blockers must be arrays")
+    for index, item in enumerate(value["evidence"]):
+        if not isinstance(item, dict):
+            raise ValueError(f"evidence[{index}] must be an object")
+        for field in ("timestamp", "commit", "test_command", "result"):
+            if field in item and (
+                not isinstance(item[field], str) or not item[field].strip()
+            ):
+                raise ValueError(
+                    f"evidence[{index}].{field} must be a non-empty string"
+                )
     if not all(isinstance(blocker, str) and blocker.strip() for blocker in value["blockers"]):
         raise ValueError("blockers must contain non-empty strings")
     if not isinstance(value["history"], list) or not value["history"]:
@@ -866,8 +876,9 @@ def handoff_markdown(value: dict) -> str:
 def save_state(state_path: Path, handoff_path: Path, value: dict) -> None:
     """Compatibility helper for a single explicit state destination."""
     validate_state(value)
+    rendered_handoff = handoff_markdown(value)
     atomic_write_json(state_path, value)
-    atomic_write_text(handoff_path, handoff_markdown(value))
+    atomic_write_text(handoff_path, rendered_handoff)
 
 
 def event(value: dict, name: str, detail: str = "") -> None:
