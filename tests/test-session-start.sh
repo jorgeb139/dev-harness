@@ -32,6 +32,8 @@ echo "$out" | grep -q "Etapa 2, tarea 2.3" || fail "no inyecta tarea actual: $ou
 # Caso 5: estado estructurado -> muestra handoff resumible
 mkdir -p "$TMP/p5/docs/plans" "$TMP/p5/.harness"; cd "$TMP/p5"
 cp "$ROOT/scripts/harness-state.py" .harness/harness-state.py
+cp "$ROOT/scripts/harness_state.py" .harness/harness_state.py
+cp "$ROOT/scripts/harness_store.py" .harness/harness_store.py
 printf '# Plan: state\n' > docs/plans/ACTIVE-PLAN.md
 PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-state.py init \
   --plan-id state --plan-file docs/plans/ACTIVE-PLAN.md --branch codex/test \

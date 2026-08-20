@@ -15,6 +15,8 @@ Inicializa dev-harness en el proyecto actual (cwd). En Codex, seguir estos mismo
    - `<raiz-del-repo-dev-harness>/templates/CLAUDE.md` → `./CLAUDE.md`
    - `<raiz-del-repo-dev-harness>/templates/HANDOFF-template.md` → `./docs/plans/HANDOFF-template.md`
    - `<raiz-del-repo-dev-harness>/scripts/harness-state.py` → `./.harness/harness-state.py` (crear `.harness/`)
+   - `<raiz-del-repo-dev-harness>/scripts/harness_state.py` → `./.harness/harness_state.py` (módulo compañero requerido por el wrapper)
+   - `<raiz-del-repo-dev-harness>/scripts/harness_store.py` → `./.harness/harness_store.py` (módulo compartido requerido por `harness_state.py`)
    - `<raiz-del-repo-dev-harness>/templates/health.sh` → `./.harness/health.sh` (crear `.harness/`, dar permisos con `chmod +x`)
    - Crear directorio `docs/plans/` (los planes usan `<raiz-del-repo-dev-harness>/templates/PLAN-template.md` como formato)
 4. Personalizar con el usuario, preguntando una cosa a la vez:
