@@ -3,7 +3,7 @@
 - **Estado:** en progreso
 - **Spec:** `docs/superpowers/specs/2026-08-20-project-memory-orchestration-design.md`
 - **Plan detallado:** `docs/superpowers/plans/2026-08-20-project-memory-orchestration.md`
-- **Tarea actual:** ► Etapa 1, validación de etapa
+- **Tarea actual:** ► Etapa 2, tarea 2.1
 - **Rama base:** develop
 - **Rama de tarea:** codex/project-memory-orchestration
 - **Integracion:** PR rama de tarea -> develop; PR separado develop -> main/master
@@ -18,9 +18,9 @@
 - **Preguntas abiertas:** ninguna material; la modalidad fue elegida por el usuario
 - **Estrategia de tests:** unitarios Python, integración de CLI, hooks y validación acumulativa; E2E no aplica al harness CLI
 - **Cobertura objetivo:** >=90% del Python modificado; 100% si el coste marginal es bajo
-- **Estado de seguridad:** pendiente
-- **Estado de regresión:** pendiente
-- **Estado de handoff:** pendiente
+- **Estado de seguridad:** verde — diff sin secretos, permisos nuevos ni dependencias externas
+- **Estado de regresión:** verde — `bash tests/validate.sh` y suite dirigida completa pasan
+- **Estado de handoff:** válido — commit verificado `b6f5903`, siguiente acción 2.1
 
 ## Etapa 1: Persistent Foundations
 
@@ -32,7 +32,7 @@
 - [x] 1.1 Extract shared storage primitives — implementado y revisado; commits `5dfa9a2`, `cdba8ae`
 - [x] 1.2 Add identity and deterministic project context — implementado y revisado; commit `d6d0191`
 
-**Validación de etapa:** en revisión; requiere seguridad, regresión, tests y handoff en verde.
+**Validación de etapa:** seguridad ✅ | regresión ✅ (`PYTHONDONTWRITEBYTECODE=1 bash tests/validate.sh` y suite dirigida) | test strategy ✅ (unitarios/CLI/integración aplicables; cobertura numérica pendiente de Task 4.2 porque no hay proveedor instalado) | handoff ✅ | objetivos ✅ — 2026-08-20.
 
 ## Etapa 2: Memory and Structured Plans
 
