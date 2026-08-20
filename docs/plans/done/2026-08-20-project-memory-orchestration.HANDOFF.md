@@ -1,23 +1,24 @@
 # Handoff: project-memory-orchestration
 
-- Status: `in_progress`
-- Phase: `2`
-- Task: `2.2`
+- Status: `completed`
+- Phase: `4`
+- Task: `completed`
 - Owner: `orchestrator`
 - Branch: `codex/project-memory-orchestration`
 - Last completed task: `none`
-- Last verified commit: `971aa7e`
+- Last verified commit: `a902659`
 - Selected mode: `pending`
 - Attempt count: `0`
 - Updated: `2026-08-20T19:28:22+00:00`
 
 ## Next action
 
-Run completion/archive hardening, coverage gate, retrospective, and final release verification
+Plan archived; next integration action is PR from `codex/project-memory-orchestration` to `develop`.
 
 ## Blockers
 
-- None
+- Independent subagent review of the final micro-fix could not complete because the runtime usage
+  limit was reached; local focused/full regression and transaction probes are green.
 
 ## Evidence
 
@@ -26,6 +27,7 @@ Run completion/archive hardening, coverage gate, retrospective, and final releas
 - `2026-08-20T05:20:29+00:00`: ALL OK; security scan clean; phase objectives green; numeric coverage provider unavailable and gated by Task 4.2 (command: `PYTHONDONTWRITEBYTECODE=1 bash tests/validate.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-store.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-state.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-project.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-session-start.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-pre-commit-gate.sh`, commit: `b6f5903`)
 - `2026-08-20T05:35:31+00:00`: ALL OK; memory review approved; sensitive metadata and identity gates verified (command: `PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-project.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-store.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-state.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/validate.sh`, commit: `16cd82b`)
 - `2026-08-20T19:28:22+00:00`: ALL OK; identity mismatch, model matrix, hooks and generated contracts verified (command: `PYTHONDONTWRITEBYTECODE=1 bash tests/validate.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-harness-plan.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-session-start.sh && PYTHONDONTWRITEBYTECODE=1 bash tests/test-pre-commit-gate.sh`, commit: `971aa7e`)
+- `2026-08-20`: Full validation green; manifests are `0.4.0`; Python `coverage` provider unavailable in this environment.
 
 ## Recent history
 
