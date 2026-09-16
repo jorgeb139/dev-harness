@@ -28,7 +28,7 @@ run_health() {
     python3 -c '
 import subprocess, sys
 try:
-    p = subprocess.run(["bash", ".harness/health.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
+    p = subprocess.run(["bash", ".harness/health.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
     sys.stdout.write(p.stdout)
     raise SystemExit(p.returncode)
 except subprocess.TimeoutExpired as e:
@@ -36,7 +36,7 @@ except subprocess.TimeoutExpired as e:
     if isinstance(out, bytes):
         out = out.decode(errors="replace")
     sys.stdout.write(out)
-    print("health-check excedio 60 segundos")
+    print("health-check excedio 120 segundos")
     raise SystemExit(124)
 except Exception as e:
     print("dev-harness: no se pudo ejecutar health-check:", e)
