@@ -81,8 +81,8 @@ def _write_context(root: Path, initialize: bool) -> None:
             if initialize and context_path.exists():
                 raise ValueError(f"project context already exists: {context_path}")
             inventory = build_context_inventory(root)
-            if inventory["identity"]["identity_id"] != stored["identity_id"]:
-                raise IdentityMismatch("current identity does not match stored identity")
+            # The stored identity is the project's; a clone or worktree renders the same context.
+            inventory["identity"] = {**inventory["identity"], "name": stored["name"], "identity_id": stored["identity_id"]}
             rendered = render_context(inventory)
             updated = dict(stored)
             updated["context_fingerprint"] = inventory["fingerprint"]

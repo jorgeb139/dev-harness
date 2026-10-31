@@ -59,7 +59,8 @@ validate_project_contract() {
       rendered="$(mktemp "${TMPDIR:-/tmp}/dev-harness-plan.XXXXXX")"
       trap 'rm -f "$rendered"' RETURN
       PYTHONDONTWRITEBYTECODE=1 python3 -B .harness/harness-plan.py plan render --plan-json .harness/plan.json --output "$rendered" || return 1
-      cmp -s "$rendered" docs/plans/ACTIVE-PLAN.md || return 1
+      # Windows renders with CRLF while Git stores LF: only the content must match.
+      cmp -s <(tr -d '' < "$rendered") <(tr -d '' < docs/plans/ACTIVE-PLAN.md) || return 1
     fi
   fi
 }

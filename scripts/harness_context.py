@@ -136,7 +136,11 @@ def validate_identity(root: Path, stored: dict) -> list[str]:
     if stored["identity_id"] != expected_id:
         errors.append("stored identity_id does not match stored identity fields")
     current = discover_identity(root)
-    for field in ("root", "name", "remote"):
+    # The remote names the project; the folder (and the name derived from it) only locates a checkout.
+    # A clone or git worktree of the same repository therefore keeps its identity. Without a remote
+    # there is nothing else to anchor on, so root and name must match.
+    same_repository = stored["remote"] is not None and stored["remote"] == current["remote"]
+    for field in ("remote",) if same_repository else ("root", "name", "remote"):
         if stored[field] != current[field]:
             errors.append(f"{field} mismatch: stored={stored[field]!r} current={current[field]!r}")
     return errors

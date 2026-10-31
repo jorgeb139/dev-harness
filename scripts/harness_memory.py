@@ -6,7 +6,7 @@ import hashlib
 import unicodedata
 from pathlib import Path
 
-from harness_context import discover_identity
+from harness_context import discover_identity, validate_identity
 from harness_store import atomic_write_json, find_sensitive_patterns, load_json, locked, utc_now
 
 
@@ -40,7 +40,18 @@ def memory_path(root: Path) -> Path:
 
 
 def _project_identity(root: Path) -> str:
-    return discover_identity(root)["identity_id"]
+    """The identity memory is bound to: the one recorded in the project, shared by every clone and worktree.
+
+    The checkout must still belong to that project (same remote), otherwise nothing is bound.
+    """
+    identity_file = Path(root).resolve() / ".harness" / "project-identity.json"
+    if not identity_file.exists():
+        return discover_identity(root)["identity_id"]
+    stored = load_json(identity_file)
+    errors = validate_identity(root, stored)
+    if errors:
+        raise ValueError("memory identity mismatch: " + "; ".join(errors))
+    return stored["identity_id"]
 
 
 def _new_memory(root: Path) -> dict:
