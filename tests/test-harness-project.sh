@@ -32,6 +32,17 @@ git -C "$PROJECT" remote add origin 'https://token@example.test/team/demo.git'
   python3 "$CLI" context init >/dev/null || fail "context init debe funcionar"
 )
 
+# A clone or worktree of the same repository keeps its identity even when its folder (and so its name) differs.
+CLONE="$TMP/clone-of-project"
+cp -R "$PROJECT" "$CLONE"
+printf '{"name":"clone-name","scripts":{"build":"tool build","test":"tool test"}}
+' > "$CLONE/package.json"
+expect_exit 0 bash -c "cd '$CLONE' && python3 '$CLI' identity check"
+expect_exit 0 bash -c "cd '$CLONE' && python3 '$CLI' memory list"
+expect_exit 0 bash -c "cd '$CLONE' && python3 '$CLI' context refresh"
+STORED_ID="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['identity_id'])" "$PROJECT/.harness/project-identity.json")"
+grep -q "$STORED_ID" "$CLONE/PROJECT-CONTEXT.md" || fail "el contexto de un clon debe conservar el identity_id guardado"
+
 PYTHONPATH="$ROOT/scripts" python3 - "$PROJECT" <<'PY'
 import json
 import sys
